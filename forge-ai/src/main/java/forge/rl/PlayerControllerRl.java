@@ -5,8 +5,12 @@ import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
+import forge.game.ability.AbilityUtils;
+import forge.game.ability.ApiType;
+import forge.game.ability.effects.CharmEffect;
 import forge.game.card.CardCollection;
 import forge.game.player.Player;
+import forge.game.spellability.AbilitySub;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 
@@ -26,8 +30,15 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int rawCandidateCount = 0;
     private int filteredCandidateCount = 0;
     private int invalidTargetCandidateCount = 0;
+    private int invalidModeCandidateCount = 0;
     private int chosenActionCount = 0;
     private int failedActionCount = 0;
+    private int failedUnplayableActionCount = 0;
+    private int failedInvalidTargetActionCount = 0;
+    private int failedUnpayableCostActionCount = 0;
+    private int failedExecutionActionCount = 0;
+    private String lastFailedActionReason = "";
+    private String lastFailedAction = "";
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -54,6 +65,11 @@ public class PlayerControllerRl extends PlayerControllerAi {
             allPlayable = new ArrayList<>();
             for (SpellAbility sa : rawPlayable) {
                 if (!sa.canPlay()) {
+                    continue;
+                }
+
+                if (sa.getApi() == ApiType.Charm && !hasEnoughLegalModes(sa)) {
+                    invalidModeCandidateCount++;
                     continue;
                 }
 
@@ -101,12 +117,44 @@ public class PlayerControllerRl extends PlayerControllerAi {
         return false;
     }
 
+    private boolean hasEnoughLegalModes(SpellAbility sa) {
+        final List<AbilitySub> choices = CharmEffect.makePossibleOptions(sa);
+        final int num = AbilityUtils.calculateAmount(
+                sa.getHostCard(), sa.getParamOrDefault("CharmNum", "1"), sa);
+        final int min = sa.hasParam("MinCharmNum")
+                ? AbilityUtils.calculateAmount(
+                        sa.getHostCard(), sa.getParam("MinCharmNum"), sa)
+                : num;
+        if (sa.hasParam("CanRepeatModes")) {
+            return min == 0 || !choices.isEmpty();
+        }
+        return min <= choices.size();
+    }
+
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
         chosenActionCount++;
+        final boolean playable = sa.canPlay();
+        final boolean validTargets = !usesTargeting(sa)
+                || getGame().getStack().hasLegalTargeting(sa);
+        final boolean payableCost = ComputerUtilCost.canPayCost(sa, player, false);
         boolean played = super.playChosenSpellAbility(sa);
         if (!played) {
             failedActionCount++;
+            if (!playable) {
+                failedUnplayableActionCount++;
+                lastFailedActionReason = "unplayable";
+            } else if (!validTargets) {
+                failedInvalidTargetActionCount++;
+                lastFailedActionReason = "invalid_target";
+            } else if (!payableCost) {
+                failedUnpayableCostActionCount++;
+                lastFailedActionReason = "unpayable_cost";
+            } else {
+                failedExecutionActionCount++;
+                lastFailedActionReason = "execution";
+            }
+            lastFailedAction = sa.getHostCard().getName() + ": " + sa;
         }
         return played;
     }
@@ -123,11 +171,39 @@ public class PlayerControllerRl extends PlayerControllerAi {
         return invalidTargetCandidateCount;
     }
 
+    public int getInvalidModeCandidateCount() {
+        return invalidModeCandidateCount;
+    }
+
     public int getChosenActionCount() {
         return chosenActionCount;
     }
 
     public int getFailedActionCount() {
         return failedActionCount;
+    }
+
+    public int getFailedUnplayableActionCount() {
+        return failedUnplayableActionCount;
+    }
+
+    public int getFailedInvalidTargetActionCount() {
+        return failedInvalidTargetActionCount;
+    }
+
+    public int getFailedUnpayableCostActionCount() {
+        return failedUnpayableCostActionCount;
+    }
+
+    public int getFailedExecutionActionCount() {
+        return failedExecutionActionCount;
+    }
+
+    public String getLastFailedActionReason() {
+        return lastFailedActionReason;
+    }
+
+    public String getLastFailedAction() {
+        return lastFailedAction;
     }
 }
