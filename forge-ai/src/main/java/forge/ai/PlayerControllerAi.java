@@ -837,11 +837,12 @@ public class PlayerControllerAi extends PlayerController {
         if (sa.isLandAbility()) {
             if (sa.canPlay()) {
                 sa.resolve();
+                return true;
             }
+            return false;
         } else {
-            ComputerUtil.handlePlayingSpellAbility(player, sa, getDeferredTargetingPlayerRunnable(sa));
+            return ComputerUtil.handlePlayingSpellAbility(player, sa, getDeferredTargetingPlayerRunnable(sa));
         }
-        return true;
     }
 
     /**

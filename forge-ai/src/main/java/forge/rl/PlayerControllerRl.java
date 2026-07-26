@@ -2,6 +2,7 @@ package forge.rl;
 
 import forge.LobbyPlayer;
 import forge.ai.ComputerUtilAbility;
+import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
 import forge.game.card.CardCollection;
@@ -22,6 +23,10 @@ import java.util.List;
 public class PlayerControllerRl extends PlayerControllerAi {
 
     private final IDecisionCallback callback;
+    private int rawCandidateCount = 0;
+    private int filteredCandidateCount = 0;
+    private int chosenActionCount = 0;
+    private int failedActionCount = 0;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -43,7 +48,15 @@ public class PlayerControllerRl extends PlayerControllerAi {
             CardCollection pool = new CardCollection();
             pool.addAll(player.getCardsIn(ZoneType.Hand));
             pool.addAll(player.getCardsIn(ZoneType.Battlefield));
-            allPlayable = ComputerUtilAbility.getSpellAbilities(pool, player);
+            List<SpellAbility> rawPlayable = ComputerUtilAbility.getSpellAbilities(pool, player);
+            rawCandidateCount += rawPlayable.size();
+            allPlayable = new ArrayList<>();
+            for (SpellAbility sa : rawPlayable) {
+                if (sa.canPlay() && ComputerUtilCost.canPayCost(sa, player, false)) {
+                    allPlayable.add(sa);
+                }
+            }
+            filteredCandidateCount += allPlayable.size();
         } catch (Exception e) {
             allPlayable = new ArrayList<>();
         }
@@ -54,5 +67,31 @@ public class PlayerControllerRl extends PlayerControllerAi {
             return null; // pass priority
         }
         return choice;
+    }
+
+    @Override
+    public boolean playChosenSpellAbility(SpellAbility sa) {
+        chosenActionCount++;
+        boolean played = super.playChosenSpellAbility(sa);
+        if (!played) {
+            failedActionCount++;
+        }
+        return played;
+    }
+
+    public int getRawCandidateCount() {
+        return rawCandidateCount;
+    }
+
+    public int getFilteredCandidateCount() {
+        return filteredCandidateCount;
+    }
+
+    public int getChosenActionCount() {
+        return chosenActionCount;
+    }
+
+    public int getFailedActionCount() {
+        return failedActionCount;
     }
 }
