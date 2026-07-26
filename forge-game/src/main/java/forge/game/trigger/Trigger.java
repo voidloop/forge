@@ -683,13 +683,15 @@ public abstract class Trigger extends TriggerReplacementBase {
                 return true;
             case ChangesZone:
             case ChangesZoneAll:
-                if (Strings.CS.contains(getParam("Origin"), "Battlefield")) {
+                final String origin = getParamOrDefault("Origin", "");
+                final String destination = getParamOrDefault("Destination", "");
+                if (Strings.CS.contains(origin, "Battlefield")) {
                     return true;
                 }
-                if (Strings.CS.contains(getParam("Origin"), "Graveyard") && !"Battlefield".equals(getParam("Destination"))) {
+                if (Strings.CS.contains(origin, "Graveyard") && !"Battlefield".equals(destination)) {
                     return true;
                 }
-                return Strings.CS.containsAny(getParam("Destination"), "Library", "Hand");
+                return Strings.CS.containsAny(destination, "Library", "Hand");
             default:
                 return false;
         }
