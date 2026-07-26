@@ -1,12 +1,13 @@
 package forge.rl;
 
 import forge.LobbyPlayer;
-import forge.ai.AiController;
 import forge.ai.ComputerUtilAbility;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
+import forge.game.card.CardCollection;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
+import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,19 +31,19 @@ public class PlayerControllerRl extends PlayerControllerAi {
     /**
      * Main RL decision hook: called every time this player has priority.
      *
-     * Returns null  → pass priority.
-     * Returns list  → play those SpellAbilities (the first one is executed; the AI's
-     *                 playChosenSpellAbility handles targeting / cost payment).
+     * Returns null  -> pass priority.
+     * Returns list  -> play those SpellAbilities (the first one is executed; the AI's
+     *                  playChosenSpellAbility handles targeting / cost payment).
      */
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
         // Build the list of currently playable SpellAbilities (same view the AI uses).
         List<SpellAbility> allPlayable;
         try {
-            allPlayable = ComputerUtilAbility.getSpellAbilities(
-                    player.getCardsIn(forge.game.zone.ZoneType.Hand)
-                            .appendedList(player.getCardsIn(forge.game.zone.ZoneType.Battlefield)),
-                    player);
+            CardCollection pool = new CardCollection();
+            pool.addAll(player.getCardsIn(ZoneType.Hand));
+            pool.addAll(player.getCardsIn(ZoneType.Battlefield));
+            allPlayable = ComputerUtilAbility.getSpellAbilities(pool, player);
         } catch (Exception e) {
             allPlayable = new ArrayList<>();
         }
@@ -55,4 +56,3 @@ public class PlayerControllerRl extends PlayerControllerAi {
         return choice;
     }
 }
-
