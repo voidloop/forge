@@ -25,6 +25,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private final IDecisionCallback callback;
     private int rawCandidateCount = 0;
     private int filteredCandidateCount = 0;
+    private int invalidTargetCandidateCount = 0;
     private int chosenActionCount = 0;
     private int failedActionCount = 0;
 
@@ -52,7 +53,27 @@ public class PlayerControllerRl extends PlayerControllerAi {
             rawCandidateCount += rawPlayable.size();
             allPlayable = new ArrayList<>();
             for (SpellAbility sa : rawPlayable) {
-                if (sa.canPlay() && ComputerUtilCost.canPayCost(sa, player, false)) {
+                if (!sa.canPlay()) {
+                    continue;
+                }
+
+                if (usesTargeting(sa)) {
+                    // The regular AI selection path prepares targets through
+                    // canPlaySa before playChosenSpellAbility. The RL callback
+                    // bypasses that path, so only pay that cost for abilities
+                    // whose root or sub-ability actually uses targeting.
+                    getAi().canPlaySa(sa);
+                    if (!getGame().getStack().hasLegalTargeting(sa)) {
+                        sa.resetTargets();
+                        chooseTargetsFor(sa);
+                    }
+                    if (!getGame().getStack().hasLegalTargeting(sa)) {
+                        invalidTargetCandidateCount++;
+                        continue;
+                    }
+                }
+
+                if (ComputerUtilCost.canPayCost(sa, player, false)) {
                     allPlayable.add(sa);
                 }
             }
@@ -67,6 +88,17 @@ public class PlayerControllerRl extends PlayerControllerAi {
             return null; // pass priority
         }
         return choice;
+    }
+
+    private boolean usesTargeting(SpellAbility sa) {
+        SpellAbility current = sa;
+        while (current != null) {
+            if (current.usesTargeting()) {
+                return true;
+            }
+            current = current.getSubAbility();
+        }
+        return false;
     }
 
     @Override
@@ -85,6 +117,10 @@ public class PlayerControllerRl extends PlayerControllerAi {
 
     public int getFilteredCandidateCount() {
         return filteredCandidateCount;
+    }
+
+    public int getInvalidTargetCandidateCount() {
+        return invalidTargetCandidateCount;
     }
 
     public int getChosenActionCount() {
