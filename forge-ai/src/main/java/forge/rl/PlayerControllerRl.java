@@ -32,7 +32,13 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int filteredCandidateCount = 0;
     private int invalidTargetCandidateCount = 0;
     private int invalidModeCandidateCount = 0;
+    private int manaCandidateFilteredCount = 0;
+    private int automaticPassCount = 0;
     private int chosenActionCount = 0;
+    private int chosenPassActionCount = 0;
+    private int chosenSpellActionCount = 0;
+    private int chosenLandActionCount = 0;
+    private int chosenActivatedAbilityActionCount = 0;
     private int failedActionCount = 0;
     private int failedUnplayableActionCount = 0;
     private int failedInvalidTargetActionCount = 0;
@@ -65,6 +71,10 @@ public class PlayerControllerRl extends PlayerControllerAi {
             rawCandidateCount += rawPlayable.size();
             allPlayable = new ArrayList<>();
             for (SpellAbility sa : rawPlayable) {
+                if (sa.isManaAbility()) {
+                    manaCandidateFilteredCount++;
+                    continue;
+                }
                 if (!sa.canPlay()) {
                     continue;
                 }
@@ -106,9 +116,15 @@ public class PlayerControllerRl extends PlayerControllerAi {
             allPlayable = new ArrayList<>();
         }
 
+        if (allPlayable.isEmpty()) {
+            automaticPassCount++;
+            return null;
+        }
+
         List<SpellAbility> choice = callback.chooseSpellAbilitiesToPlay(allPlayable);
 
         if (choice == null || choice.isEmpty()) {
+            chosenPassActionCount++;
             return null; // pass priority
         }
         return choice;
@@ -142,6 +158,13 @@ public class PlayerControllerRl extends PlayerControllerAi {
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
         chosenActionCount++;
+        if (sa.isSpell()) {
+            chosenSpellActionCount++;
+        } else if (sa.isLandAbility()) {
+            chosenLandActionCount++;
+        } else if (sa.isActivatedAbility()) {
+            chosenActivatedAbilityActionCount++;
+        }
         final boolean playable = sa.canPlay();
         final boolean validTargets = !usesTargeting(sa)
                 || getGame().getStack().hasLegalTargeting(sa);
@@ -183,8 +206,32 @@ public class PlayerControllerRl extends PlayerControllerAi {
         return invalidModeCandidateCount;
     }
 
+    public int getManaCandidateFilteredCount() {
+        return manaCandidateFilteredCount;
+    }
+
+    public int getAutomaticPassCount() {
+        return automaticPassCount;
+    }
+
     public int getChosenActionCount() {
         return chosenActionCount;
+    }
+
+    public int getChosenPassActionCount() {
+        return chosenPassActionCount;
+    }
+
+    public int getChosenSpellActionCount() {
+        return chosenSpellActionCount;
+    }
+
+    public int getChosenLandActionCount() {
+        return chosenLandActionCount;
+    }
+
+    public int getChosenActivatedAbilityActionCount() {
+        return chosenActivatedAbilityActionCount;
     }
 
     public int getFailedActionCount() {
