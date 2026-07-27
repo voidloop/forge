@@ -6,9 +6,12 @@ import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
+import forge.game.GameEntity;
+import forge.game.GameObject;
 import forge.game.ability.AbilityUtils;
 import forge.game.ability.ApiType;
 import forge.game.ability.effects.CharmEffect;
+import forge.game.card.Card;
 import forge.game.card.CardCollection;
 import forge.game.player.Player;
 import forge.game.spellability.AbilitySub;
@@ -39,6 +42,18 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int chosenSpellActionCount = 0;
     private int chosenLandActionCount = 0;
     private int chosenActivatedAbilityActionCount = 0;
+    private int targetExpandedWindowCount = 0;
+    private int targetExpandedAttachAbilityCount = 0;
+    private int targetExpandedAttachCandidateCount = 0;
+    private int targetExpandedAttachCurrentTargetCandidateCount = 0;
+    private int targetExpandedAttachCardTargetCount = 0;
+    private int targetExpandedAttachPlayerTargetCount = 0;
+    private int targetExpandedCandidatesUpTo8Count = 0;
+    private int targetExpandedCandidates9To16Count = 0;
+    private int targetExpandedCandidates17To32Count = 0;
+    private int targetExpandedCandidates33To64Count = 0;
+    private int targetExpandedCandidates65To128Count = 0;
+    private int targetExpandedCandidatesOver128Count = 0;
     private int failedActionCount = 0;
     private int failedUnplayableActionCount = 0;
     private int failedInvalidTargetActionCount = 0;
@@ -116,6 +131,8 @@ public class PlayerControllerRl extends PlayerControllerAi {
             allPlayable = new ArrayList<>();
         }
 
+        recordTargetExpandedDiagnostics(allPlayable);
+
         if (allPlayable.isEmpty()) {
             automaticPassCount++;
             return null;
@@ -139,6 +156,58 @@ public class PlayerControllerRl extends PlayerControllerAi {
             current = current.getSubAbility();
         }
         return false;
+    }
+
+    private void recordTargetExpandedDiagnostics(List<SpellAbility> abilities) {
+        int attachAbilities = 0;
+        int attachCandidates = 0;
+        for (SpellAbility ability : abilities) {
+            if (!RlActionCandidateEnumerator.supportsSingleTargetAttach(ability)) {
+                continue;
+            }
+            attachAbilities++;
+            List<RlActionCandidate> candidates =
+                    RlActionCandidateEnumerator.enumerateSingleTargetAttach(ability);
+            attachCandidates += candidates.size();
+            for (RlActionCandidate candidate : candidates) {
+                if (candidate.getTargets().isEmpty()) {
+                    continue;
+                }
+                GameObject target = candidate.getTargets().get(0);
+                if (target instanceof Card) {
+                    targetExpandedAttachCardTargetCount++;
+                } else if (target instanceof Player) {
+                    targetExpandedAttachPlayerTargetCount++;
+                }
+                if (target instanceof GameEntity
+                        && ability.getHostCard().isAttachedToEntity(
+                                (GameEntity) target)) {
+                    targetExpandedAttachCurrentTargetCandidateCount++;
+                }
+            }
+        }
+
+        if (attachAbilities == 0) {
+            return;
+        }
+        targetExpandedWindowCount++;
+        targetExpandedAttachAbilityCount += attachAbilities;
+        targetExpandedAttachCandidateCount += attachCandidates;
+        int expandedCandidateCount =
+                abilities.size() - attachAbilities + attachCandidates;
+        if (expandedCandidateCount <= 8) {
+            targetExpandedCandidatesUpTo8Count++;
+        } else if (expandedCandidateCount <= 16) {
+            targetExpandedCandidates9To16Count++;
+        } else if (expandedCandidateCount <= 32) {
+            targetExpandedCandidates17To32Count++;
+        } else if (expandedCandidateCount <= 64) {
+            targetExpandedCandidates33To64Count++;
+        } else if (expandedCandidateCount <= 128) {
+            targetExpandedCandidates65To128Count++;
+        } else {
+            targetExpandedCandidatesOver128Count++;
+        }
     }
 
     private boolean hasEnoughLegalModes(SpellAbility sa) {
@@ -232,6 +301,54 @@ public class PlayerControllerRl extends PlayerControllerAi {
 
     public int getChosenActivatedAbilityActionCount() {
         return chosenActivatedAbilityActionCount;
+    }
+
+    public int getTargetExpandedWindowCount() {
+        return targetExpandedWindowCount;
+    }
+
+    public int getTargetExpandedAttachAbilityCount() {
+        return targetExpandedAttachAbilityCount;
+    }
+
+    public int getTargetExpandedAttachCandidateCount() {
+        return targetExpandedAttachCandidateCount;
+    }
+
+    public int getTargetExpandedAttachCurrentTargetCandidateCount() {
+        return targetExpandedAttachCurrentTargetCandidateCount;
+    }
+
+    public int getTargetExpandedAttachCardTargetCount() {
+        return targetExpandedAttachCardTargetCount;
+    }
+
+    public int getTargetExpandedAttachPlayerTargetCount() {
+        return targetExpandedAttachPlayerTargetCount;
+    }
+
+    public int getTargetExpandedCandidatesUpTo8Count() {
+        return targetExpandedCandidatesUpTo8Count;
+    }
+
+    public int getTargetExpandedCandidates9To16Count() {
+        return targetExpandedCandidates9To16Count;
+    }
+
+    public int getTargetExpandedCandidates17To32Count() {
+        return targetExpandedCandidates17To32Count;
+    }
+
+    public int getTargetExpandedCandidates33To64Count() {
+        return targetExpandedCandidates33To64Count;
+    }
+
+    public int getTargetExpandedCandidates65To128Count() {
+        return targetExpandedCandidates65To128Count;
+    }
+
+    public int getTargetExpandedCandidatesOver128Count() {
+        return targetExpandedCandidatesOver128Count;
     }
 
     public int getFailedActionCount() {
