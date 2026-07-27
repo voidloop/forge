@@ -54,6 +54,14 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int targetExpandedCandidates33To64Count = 0;
     private int targetExpandedCandidates65To128Count = 0;
     private int targetExpandedCandidatesOver128Count = 0;
+    private int selectedAttachActionCount = 0;
+    private int selectedAttachCurrentTargetActionCount = 0;
+    private int selectedAttachCardTargetActionCount = 0;
+    private int selectedAttachPlayerTargetActionCount = 0;
+    private int selectedAttachOwnTargetActionCount = 0;
+    private int selectedAttachOpponentTargetActionCount = 0;
+    private String lastSelectedAttachSource = "";
+    private String lastSelectedAttachTarget = "";
     private int failedActionCount = 0;
     private int failedUnplayableActionCount = 0;
     private int failedInvalidTargetActionCount = 0;
@@ -147,6 +155,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
         }
         List<SpellAbility> abilities = new ArrayList<>();
         for (RlActionCandidate candidate : choice) {
+            recordSelectedAttachAction(candidate);
             abilities.add(RlActionCandidateEnumerator.copyForExecution(candidate));
         }
         return abilities;
@@ -232,6 +241,42 @@ public class PlayerControllerRl extends PlayerControllerAi {
             }
         }
         return candidates;
+    }
+
+    private void recordSelectedAttachAction(RlActionCandidate candidate) {
+        if (!RlActionCandidateEnumerator.supportsSingleTargetAttach(candidate.getAbility())) {
+            return;
+        }
+        selectedAttachActionCount++;
+        lastSelectedAttachSource = candidate.getAbility().getHostCard().getName();
+        if (candidate.getTargets().isEmpty()) {
+            lastSelectedAttachTarget = "";
+            return;
+        }
+
+        GameObject target = candidate.getTargets().get(0);
+        lastSelectedAttachTarget = target.toString();
+        if (target instanceof Card) {
+            selectedAttachCardTargetActionCount++;
+            Player controller = ((Card) target).getController();
+            if (player.equals(controller)) {
+                selectedAttachOwnTargetActionCount++;
+            } else {
+                selectedAttachOpponentTargetActionCount++;
+            }
+        } else if (target instanceof Player) {
+            selectedAttachPlayerTargetActionCount++;
+            if (player.equals(target)) {
+                selectedAttachOwnTargetActionCount++;
+            } else {
+                selectedAttachOpponentTargetActionCount++;
+            }
+        }
+        if (target instanceof GameEntity
+                && candidate.getAbility().getHostCard().isAttachedToEntity(
+                        (GameEntity) target)) {
+            selectedAttachCurrentTargetActionCount++;
+        }
     }
 
     private boolean hasEnoughLegalModes(SpellAbility sa) {
@@ -373,6 +418,38 @@ public class PlayerControllerRl extends PlayerControllerAi {
 
     public int getTargetExpandedCandidatesOver128Count() {
         return targetExpandedCandidatesOver128Count;
+    }
+
+    public int getSelectedAttachActionCount() {
+        return selectedAttachActionCount;
+    }
+
+    public int getSelectedAttachCurrentTargetActionCount() {
+        return selectedAttachCurrentTargetActionCount;
+    }
+
+    public int getSelectedAttachCardTargetActionCount() {
+        return selectedAttachCardTargetActionCount;
+    }
+
+    public int getSelectedAttachPlayerTargetActionCount() {
+        return selectedAttachPlayerTargetActionCount;
+    }
+
+    public int getSelectedAttachOwnTargetActionCount() {
+        return selectedAttachOwnTargetActionCount;
+    }
+
+    public int getSelectedAttachOpponentTargetActionCount() {
+        return selectedAttachOpponentTargetActionCount;
+    }
+
+    public String getLastSelectedAttachSource() {
+        return lastSelectedAttachSource;
+    }
+
+    public String getLastSelectedAttachTarget() {
+        return lastSelectedAttachTarget;
     }
 
     public int getFailedActionCount() {
