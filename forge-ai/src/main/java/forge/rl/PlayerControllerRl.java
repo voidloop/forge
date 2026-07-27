@@ -1,6 +1,7 @@
 package forge.rl;
 
 import forge.LobbyPlayer;
+import forge.ai.AiPlayDecision;
 import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
@@ -73,17 +74,24 @@ public class PlayerControllerRl extends PlayerControllerAi {
                     continue;
                 }
 
-                if (usesTargeting(sa)) {
+                final boolean isCharm = sa.getApi() == ApiType.Charm;
+                if (isCharm || usesTargeting(sa)) {
                     // The regular AI selection path prepares targets through
-                    // canPlaySa before playChosenSpellAbility. The RL callback
-                    // bypasses that path, so only pay that cost for abilities
-                    // whose root or sub-ability actually uses targeting.
-                    getAi().canPlaySa(sa);
-                    if (!getGame().getStack().hasLegalTargeting(sa)) {
+                    // canPlaySa before playChosenSpellAbility. Charm abilities
+                    // also need this pass before moving to the stack: it chooses
+                    // and stores their modes, which may introduce targets.
+                    final AiPlayDecision decision = getAi().canPlaySa(sa);
+                    if (isCharm && decision != AiPlayDecision.WillPlay) {
+                        invalidModeCandidateCount++;
+                        continue;
+                    }
+                    if (usesTargeting(sa)
+                            && !getGame().getStack().hasLegalTargeting(sa)) {
                         sa.resetTargets();
                         chooseTargetsFor(sa);
                     }
-                    if (!getGame().getStack().hasLegalTargeting(sa)) {
+                    if (usesTargeting(sa)
+                            && !getGame().getStack().hasLegalTargeting(sa)) {
                         invalidTargetCandidateCount++;
                         continue;
                     }
