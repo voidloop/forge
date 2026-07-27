@@ -20,6 +20,10 @@ public final class RlActionCandidateEnumerator {
         return findSingleTargetAttach(ability) != null;
     }
 
+    public static RlActionCandidate targetless(SpellAbility ability) {
+        return new RlActionCandidate(ability, List.of());
+    }
+
     public static List<RlActionCandidate> enumerateSingleTargetAttach(
             SpellAbility ability) {
         SpellAbility diagnosticCopy = ability.copy();
@@ -45,6 +49,28 @@ public final class RlActionCandidateEnumerator {
                     new RlActionCandidate(ability, List.<GameObject>of(target)));
         }
         return candidates;
+    }
+
+    public static SpellAbility copyForExecution(RlActionCandidate candidate) {
+        if (candidate.getTargets().isEmpty()) {
+            return candidate.getAbility();
+        }
+
+        SpellAbility executionCopy = candidate.getAbility().copy();
+        if (executionCopy == null) {
+            return candidate.getAbility();
+        }
+
+        SpellAbility attach = findSingleTargetAttach(executionCopy);
+        if (attach == null) {
+            return candidate.getAbility();
+        }
+
+        attach.resetTargets();
+        for (GameObject target : candidate.getTargets()) {
+            attach.getTargets().add(target);
+        }
+        return executionCopy;
     }
 
     private static SpellAbility findSingleTargetAttach(SpellAbility ability) {

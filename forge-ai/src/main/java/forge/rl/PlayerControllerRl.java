@@ -71,8 +71,8 @@ public class PlayerControllerRl extends PlayerControllerAi {
      * Main RL decision hook: called every time this player has priority.
      *
      * Returns null  -> pass priority.
-     * Returns list  -> play those SpellAbilities (the first one is executed; the AI's
-     *                  playChosenSpellAbility handles targeting / cost payment).
+     * Returns list  -> play those SpellAbilities after mapping the selected RL
+     *                  candidate back to an executable ability.
      */
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
@@ -132,19 +132,24 @@ public class PlayerControllerRl extends PlayerControllerAi {
         }
 
         recordTargetExpandedDiagnostics(allPlayable);
+        List<RlActionCandidate> actionCandidates = buildActionCandidates(allPlayable);
 
-        if (allPlayable.isEmpty()) {
+        if (actionCandidates.isEmpty()) {
             automaticPassCount++;
             return null;
         }
 
-        List<SpellAbility> choice = callback.chooseSpellAbilitiesToPlay(allPlayable);
+        List<RlActionCandidate> choice = callback.chooseActionCandidatesToPlay(actionCandidates);
 
         if (choice == null || choice.isEmpty()) {
             chosenPassActionCount++;
             return null; // pass priority
         }
-        return choice;
+        List<SpellAbility> abilities = new ArrayList<>();
+        for (RlActionCandidate candidate : choice) {
+            abilities.add(RlActionCandidateEnumerator.copyForExecution(candidate));
+        }
+        return abilities;
     }
 
     private boolean usesTargeting(SpellAbility sa) {
@@ -208,6 +213,25 @@ public class PlayerControllerRl extends PlayerControllerAi {
         } else {
             targetExpandedCandidatesOver128Count++;
         }
+    }
+
+    private List<RlActionCandidate> buildActionCandidates(List<SpellAbility> abilities) {
+        List<RlActionCandidate> candidates = new ArrayList<>();
+        for (SpellAbility ability : abilities) {
+            if (!RlActionCandidateEnumerator.supportsSingleTargetAttach(ability)) {
+                candidates.add(RlActionCandidateEnumerator.targetless(ability));
+                continue;
+            }
+
+            List<RlActionCandidate> expanded =
+                    RlActionCandidateEnumerator.enumerateSingleTargetAttach(ability);
+            if (expanded.isEmpty()) {
+                candidates.add(RlActionCandidateEnumerator.targetless(ability));
+            } else {
+                candidates.addAll(expanded);
+            }
+        }
+        return candidates;
     }
 
     private boolean hasEnoughLegalModes(SpellAbility sa) {
