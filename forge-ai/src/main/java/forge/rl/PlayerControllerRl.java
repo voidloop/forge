@@ -13,6 +13,7 @@ import forge.game.ability.ApiType;
 import forge.game.ability.effects.CharmEffect;
 import forge.game.card.Card;
 import forge.game.card.CardCollection;
+import forge.game.card.CardCollectionView;
 import forge.game.player.Player;
 import forge.game.spellability.AbilitySub;
 import forge.game.spellability.SpellAbility;
@@ -73,6 +74,39 @@ public class PlayerControllerRl extends PlayerControllerAi {
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
         this.callback = callback;
+    }
+
+    @Override
+    public void reveal(CardCollectionView cards, ZoneType zone, Player owner,
+                       String messagePrefix, boolean addSuffix) {
+        super.reveal(cards, zone, owner, messagePrefix, addSuffix);
+        List<Integer> instanceIds = new ArrayList<>();
+        List<String> cardNames = new ArrayList<>();
+        List<Boolean> tokens = new ArrayList<>();
+        for (Card card : cards) {
+            instanceIds.add(card.getId());
+            cardNames.add(card.getName());
+            tokens.add(card.isToken());
+        }
+        callback.cardsRevealed(owner == player, zone.name(), instanceIds, cardNames, tokens);
+    }
+
+    /** Publish only the contiguous visible prefix of each library. */
+    public void publishVisibleLibraryTops() {
+        for (Player owner : getGame().getPlayers()) {
+            List<Integer> instanceIds = new ArrayList<>();
+            List<String> cardNames = new ArrayList<>();
+            List<Boolean> tokens = new ArrayList<>();
+            for (Card card : owner.getCardsIn(ZoneType.Library)) {
+                if (!card.mayPlayerLook(player)) {
+                    break;
+                }
+                instanceIds.add(card.getId());
+                cardNames.add(card.getName());
+                tokens.add(card.isToken());
+            }
+            callback.libraryTopVisible(owner == player, instanceIds, cardNames, tokens);
+        }
     }
 
     /**

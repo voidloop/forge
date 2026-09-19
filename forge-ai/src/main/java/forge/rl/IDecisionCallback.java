@@ -17,4 +17,13 @@ public interface IDecisionCallback {
      * @return chosen action candidates to play, or null to pass priority
      */
     List<RlActionCandidate> chooseActionCandidatesToPlay(List<RlActionCandidate> legalActions);
+
+    /** Facts explicitly shown to the RL player outside a priority decision. */
+    default void cardsRevealed(boolean ownerIsObserver, String zone,
+                               List<Integer> instanceIds, List<String> cardNames,
+                               List<Boolean> tokens) { }
+
+    /** Current visible prefix of a library; an empty list clears old position data. */
+    default void libraryTopVisible(boolean ownerIsObserver, List<Integer> instanceIds,
+                                   List<String> cardNames, List<Boolean> tokens) { }
 }
