@@ -1,5 +1,7 @@
 package forge.rl;
 
+import forge.game.spellability.SpellAbility;
+
 import java.util.List;
 
 /**
@@ -16,7 +18,7 @@ public interface IDecisionCallback {
      *                      (may be empty if only "pass" is available)
      * @return chosen action candidates to play, or null to pass priority
      */
-    List<RlActionCandidate> chooseActionCandidatesToPlay(List<RlActionCandidate> legalActions);
+    List<SpellAbility> chooseActionsToPlay(List<SpellAbility> legalActions);
 
     /** Facts explicitly shown to the RL player outside a priority decision. */
     default void cardsRevealed(boolean ownerIsObserver, String zone,
