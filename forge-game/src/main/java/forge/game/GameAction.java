@@ -1902,6 +1902,11 @@ public class GameAction {
 
             if (!zoneFrom.is(ZoneType.Battlefield)) {
                 zoneFrom.remove(c);
+                // Zone.remove() only fires GameEventZone, which the RL
+                // knowledge observer does not subscribe to; without this,
+                // a token ceasing to exist here is invisible to it and the
+                // token stays "known" in its last zone forever.
+                game.fireEvent(new GameEventCardChangeZone(c, zoneFrom, null));
                 checkAgain = true;
             }
         }
