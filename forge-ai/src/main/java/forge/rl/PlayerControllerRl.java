@@ -39,6 +39,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int chosenActionCount = 0;
     private int chosenPassActionCount = 0;
     private int failedActionCount = 0;
+    private int cardsBottomed = 0;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -178,6 +179,14 @@ public class PlayerControllerRl extends PlayerControllerAi {
         return played;
     }
 
+    @Override
+    public CardCollectionView tuckCardsViaMulligan(
+            CardCollectionView hand, int cardsToReturn) {
+        CardCollectionView cards = super.tuckCardsViaMulligan(hand, cardsToReturn);
+        cardsBottomed += cards.size();
+        return cards;
+    }
+
     public int getRawCandidateCount() {
         return rawCandidateCount;
     }
@@ -212,5 +221,13 @@ public class PlayerControllerRl extends PlayerControllerAi {
 
     public int getFailedActionCount() {
         return failedActionCount;
+    }
+
+    public int getMulligansTaken() {
+        return player.getStats().getMulliganCount();
+    }
+
+    public int getCardsBottomed() {
+        return cardsBottomed;
     }
 }
