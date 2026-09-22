@@ -6,7 +6,6 @@ import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
-import forge.game.GameEntity;
 import forge.game.ability.AbilityUtils;
 import forge.game.ability.ApiType;
 import forge.game.ability.effects.CharmEffect;
@@ -16,7 +15,6 @@ import forge.game.card.CardCollectionView;
 import forge.game.player.Player;
 import forge.game.spellability.AbilitySub;
 import forge.game.spellability.SpellAbility;
-import forge.game.spellability.TargetRestrictions;
 import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
@@ -143,35 +141,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
             chosenPassActionCount++;
             return null;
         }
-        for (SpellAbility ability : choice) {
-            rlAssignTargetIfSimple(ability);
-        }
         return choice;
-    }
-
-    /**
-     * Spike only: for the single ability the RL agent just chose, if it needs
-     * exactly one target, let the RL agent pick it instead of Forge AI. Every
-     * other targeting shape (0, or 2+, or dynamic target counts, sub-abilities)
-     * still falls through to Forge AI, matching the class-level policy above.
-     */
-    private void rlAssignTargetIfSimple(SpellAbility ability) {
-        if (!ability.usesTargeting()) {
-            return;
-        }
-        TargetRestrictions tr = ability.getTargetRestrictions();
-        if (tr.getMinTargets(ability.getHostCard(), ability) != 1
-                || tr.getMaxTargets(ability.getHostCard(), ability) != 1) {
-            return;
-        }
-        ability.resetTargets();
-        List<GameEntity> candidates = tr.getAllCandidates(ability);
-        GameEntity chosen = candidates.isEmpty() ? null : callback.chooseTarget(ability, candidates);
-        if (chosen == null) {
-            chooseTargetsFor(ability); // fall back to Forge AI
-        } else {
-            ability.getTargets().add(chosen);
-        }
     }
 
     private boolean usesTargeting(SpellAbility sa) {
