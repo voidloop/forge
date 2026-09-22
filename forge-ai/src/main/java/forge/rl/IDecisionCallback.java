@@ -1,5 +1,6 @@
 package forge.rl;
 
+import forge.game.GameEntity;
 import forge.game.spellability.SpellAbility;
 
 import java.util.List;
@@ -28,4 +29,16 @@ public interface IDecisionCallback {
     /** Current visible prefix of a library; an empty list clears old position data. */
     default void libraryTopVisible(boolean ownerIsObserver, List<Integer> instanceIds,
                                    List<String> cardNames, List<Boolean> tokens) { }
+
+    /**
+     * Spike only: called for a single-target ability the RL agent just chose to
+     * play, so it can pick the target itself instead of Forge AI.
+     *
+     * @param ability    the ability being targeted (already chosen to play)
+     * @param candidates every legal target for {@code ability} right now
+     * @return the chosen target, or null to fall back to Forge AI targeting
+     */
+    default GameEntity chooseTarget(SpellAbility ability, List<GameEntity> candidates) {
+        return null;
+    }
 }
