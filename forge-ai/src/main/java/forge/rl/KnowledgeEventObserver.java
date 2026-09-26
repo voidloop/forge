@@ -1,6 +1,8 @@
 package forge.rl;
 
 import com.google.common.eventbus.Subscribe;
+import forge.card.CardStateName;
+import forge.game.card.Card;
 import forge.game.card.CardView;
 import forge.game.card.CardView.CardStateView;
 import forge.game.event.GameEventCardChangeZone;
@@ -48,9 +50,15 @@ public final class KnowledgeEventObserver {
             return;
         }
         callback.cardZoneChanged(
-                card.getId(), faceUp == null ? card.getOracleName() : faceUp.getOracleName(),
+                card.getId(), faceUp == null ? printedName(card) : faceUp.getOracleName(),
                 ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
+    }
+
+    /** A Room permanent only has its unlocked doors' name (CR 709.5); report the printed card's. */
+    private String printedName(CardView view) {
+        final Card card = view.isRoom() ? observer.getGame().findById(view.getId()) : null;
+        return card == null ? view.getOracleName() : card.getName(card.getState(CardStateName.Original));
     }
 
     @Subscribe
