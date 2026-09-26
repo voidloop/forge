@@ -2,6 +2,7 @@ package forge.rl;
 
 import com.google.common.eventbus.Subscribe;
 import forge.game.card.CardView;
+import forge.game.card.CardView.CardStateView;
 import forge.game.event.GameEventCardChangeZone;
 import forge.game.event.GameEventShuffle;
 import forge.game.player.Player;
@@ -32,7 +33,7 @@ public final class KnowledgeEventObserver {
         final ZoneType from = zoneType(event.from());
         final ZoneType to = zoneType(event.to());
         final boolean publicMove = isPublic(from) || isPublic(to);
-        if (!ownerIsObserver && card.isFaceDown()) {
+        if (!card.canFaceDownBeShownTo(observer.getView())) {
             return;
         }
         if (!ownerIsObserver && !publicMove && !knownOpponentCards.contains(card.getId())) {
@@ -41,8 +42,14 @@ public final class KnowledgeEventObserver {
         if (!ownerIsObserver) {
             knownOpponentCards.add(card.getId());
         }
+        // A face-down card the observer may look at is identified by its face-up state.
+        final CardStateView faceUp = card.isFaceDown() ? card.getAlternateState() : null;
+        if (card.isFaceDown() && faceUp == null) {
+            return;
+        }
         callback.cardZoneChanged(
-                card.getId(), card.getOracleName(), ownerIsObserver, card.isToken(),
+                card.getId(), faceUp == null ? card.getOracleName() : faceUp.getOracleName(),
+                ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
     }
 
