@@ -88,9 +88,8 @@ public class PlayerControllerRl extends PlayerControllerAi {
      */
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
-        CardCollection pool = new CardCollection();
-        pool.addAll(player.getCardsIn(ZoneType.Hand));
-        pool.addAll(player.getCardsIn(ZoneType.Battlefield));
+        // Forge AI's own pool: also graveyard, exile, command, and library tops.
+        CardCollection pool = ComputerUtilAbility.getAvailableCards(getGame(), player);
         List<SpellAbility> rawPlayable = ComputerUtilAbility.getSpellAbilities(pool, player);
         rawCandidateCount += rawPlayable.size();
         List<SpellAbility> legalActions = new ArrayList<>();

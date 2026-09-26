@@ -55,10 +55,17 @@ public final class KnowledgeEventObserver {
                 zoneName(from), zoneName(to));
     }
 
-    /** A Room permanent only has its unlocked doors' name (CR 709.5); report the printed card's. */
+    /**
+     * The card's name in its destination zone: the event view may still show the state it
+     * left with, e.g. a transformed back face returning to hand. A Room permanent only has
+     * its unlocked doors' name (CR 709.5), so it is reported by its printed card's name.
+     */
     private String printedName(CardView view) {
-        final Card card = view.isRoom() ? observer.getGame().findById(view.getId()) : null;
-        return card == null ? view.getOracleName() : card.getName(card.getState(CardStateName.Original));
+        final Card card = observer.getGame().findById(view.getId());
+        if (card == null) {
+            return view.getOracleName();
+        }
+        return card.isRoom() ? card.getName(card.getState(CardStateName.Original)) : card.getName();
     }
 
     @Subscribe
