@@ -3064,6 +3064,10 @@ public class ComputerUtil {
                     // TODO Mana Ritual cards are too complex for the AI to consider casting through a spell effect and will
                     // lead to a stack overflow. Consider improving.
                     continue;
+                } else if ("ReplaySpell".equals(ab.getParam("AILogic"))) {
+                    // Evaluating a replay effect (e.g. Flashback, Recoup) as the spell to replay would choose
+                    // its own target the same way, recursing until the stack overflows.
+                    continue;
                 }
                 SpellAbility abTest = withoutPayingManaCost ? ab.copyWithNoManaCost() : ab.copy();
                 // at this point, we're assuming that card will be castable from whichever zone it's in by the AI player.
