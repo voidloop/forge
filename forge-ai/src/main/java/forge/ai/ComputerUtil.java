@@ -691,12 +691,12 @@ public class ComputerUtil {
             typeList.remove(activate);
         }
 
-        if (typeList.size() < amount) {
-            return null;
-        }
-
         if (sa.isKeyword(Keyword.STATION)) {
             typeList.removeAll(CardLists.filter(typeList, c -> c.getNetPower() <= 0));
+        }
+
+        if (typeList.size() < amount) {
+            return null;
         }
 
         CardLists.sortByPowerAsc(typeList);

@@ -49,8 +49,13 @@ public final class KnowledgeEventObserver {
         if (card.isFaceDown() && faceUp == null) {
             return;
         }
+        final String name = faceUp == null ? printedName(card) : faceUp.getOracleName();
+        // The game card may already be face down while the event view is not yet.
+        if (name.isEmpty()) {
+            return;
+        }
         callback.cardZoneChanged(
-                card.getId(), faceUp == null ? printedName(card) : faceUp.getOracleName(),
+                card.getId(), name,
                 ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
     }

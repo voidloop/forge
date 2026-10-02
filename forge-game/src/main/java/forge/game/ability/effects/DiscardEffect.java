@@ -153,7 +153,8 @@ public class DiscardEffect extends SpellAbilityEffect {
             }
 
             if (mode.equals("Hand")) {
-                toBeDiscarded = p.getCardsIn(ZoneType.Hand);
+                // a copy: discarding from the live hand while iterating it fails
+                toBeDiscarded = new CardCollection(p.getCardsIn(ZoneType.Hand));
 
                 // Empty hand can still be discarded
                 if (!toBeDiscarded.isEmpty() && !p.canDiscardBy(sa, true)) {
