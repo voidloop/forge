@@ -40,6 +40,8 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int chosenPassActionCount = 0;
     private int failedActionCount = 0;
     private int cardsBottomed = 0;
+    private boolean teacherEnabled = false;
+    private SpellAbility teacherChoice = null;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -135,12 +137,26 @@ public class PlayerControllerRl extends PlayerControllerAi {
             return null;
         }
 
+        if (teacherEnabled) {
+            final List<SpellAbility> teacher = super.chooseSpellAbilityToPlay();
+            teacherChoice = teacher == null || teacher.isEmpty() ? null : teacher.get(0);
+        }
         List<SpellAbility> choice = callback.chooseActionsToPlay(legalActions);
         if (choice == null || choice.isEmpty()) {
             chosenPassActionCount++;
             return null;
         }
         return choice;
+    }
+
+    /** Ask Forge AI for its own choice at each decision, as an imitation label. */
+    public void setTeacherEnabled(boolean enabled) {
+        teacherEnabled = enabled;
+    }
+
+    /** Forge AI's choice at the current decision; null means it would pass. */
+    public SpellAbility getTeacherChoice() {
+        return teacherChoice;
     }
 
     private boolean usesTargeting(SpellAbility sa) {
