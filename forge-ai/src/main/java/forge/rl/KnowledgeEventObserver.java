@@ -50,10 +50,11 @@ public final class KnowledgeEventObserver {
         callback.publicEvent(
                 "zone_change", ownerIsObserver, identifiedMove ? card.getId() : null,
                 zoneName(from), zoneName(to), null);
-        if (!card.canFaceDownBeShownTo(observer.getView())) {
+        if (!ownerIsObserver && !publicMove) {
+            callback.anonymousZoneChange(false, zoneName(from), zoneName(to));
             return;
         }
-        if (!ownerIsObserver && !publicMove && !knownOpponentCards.contains(card.getId())) {
+        if (!card.canFaceDownBeShownTo(observer.getView())) {
             return;
         }
         if (!ownerIsObserver) {

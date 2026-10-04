@@ -7,6 +7,8 @@ public interface IKnowledgeEventCallback {
     void cardZoneChanged(int instanceId, String cardName, boolean ownerIsObserver,
                          boolean isToken, String fromZone, String toZone);
 
+    void anonymousZoneChange(boolean ownerIsObserver, String fromZone, String toZone);
+
     void playerShuffled(boolean ownerIsObserver);
 
     void cardsRevealed(boolean ownerIsObserver, String zone, List<Integer> instanceIds,
