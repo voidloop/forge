@@ -1,16 +1,25 @@
 package forge.rl;
 
 import com.google.common.eventbus.Subscribe;
+import com.google.common.collect.Multimap;
 import forge.card.CardStateName;
 import forge.game.card.Card;
 import forge.game.card.CardView;
 import forge.game.card.CardView.CardStateView;
+import forge.game.event.GameEventAttackersDeclared;
+import forge.game.event.GameEventBlockersDeclared;
 import forge.game.event.GameEventCardChangeZone;
+import forge.game.event.GameEventLandPlayed;
+import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
+import forge.game.event.GameEventSpellAbilityCast;
+import forge.game.event.GameEventTurnEnded;
 import forge.game.player.Player;
+import forge.game.player.PlayerView;
 import forge.game.zone.ZoneType;
 import forge.game.zone.ZoneView;
 
+import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,6 +44,10 @@ public final class KnowledgeEventObserver {
         final ZoneType from = zoneType(event.from());
         final ZoneType to = zoneType(event.to());
         final boolean publicMove = isPublic(from) || isPublic(to);
+        final boolean knownMove = ownerIsObserver || publicMove || knownOpponentCards.contains(card.getId());
+        callback.publicEvent(
+                "zone_change", ownerIsObserver, knownMove ? card.getId() : null,
+                zoneName(from), zoneName(to), null);
         if (!card.canFaceDownBeShownTo(observer.getView())) {
             return;
         }
@@ -58,6 +71,57 @@ public final class KnowledgeEventObserver {
                 card.getId(), name,
                 ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
+    }
+
+    @Subscribe
+    public void onSpellAbilityCast(GameEventSpellAbilityCast event) {
+        final CardView card = event.si() == null ? null : event.si().getSourceCard();
+        final PlayerView player = event.si() == null ? null : event.si().getActivatingPlayer();
+        final String kind = event.sa().isSpell() ? "cast"
+                : event.si() != null && event.si().isTrigger() ? "trigger" : "activate";
+        callback.publicEvent(kind, isObserver(player), referenceId(card), null, null, null);
+    }
+
+    @Subscribe
+    public void onLandPlayed(GameEventLandPlayed event) {
+        callback.publicEvent(
+                "play_land", isObserver(event.player()), referenceId(event.land()),
+                null, "Battlefield", null);
+    }
+
+    @Subscribe
+    public void onAttackersDeclared(GameEventAttackersDeclared event) {
+        for (CardView attacker : event.attackersMap().values()) {
+            callback.publicEvent(
+                    "attack", isObserver(event.player()), referenceId(attacker),
+                    null, null, null);
+        }
+    }
+
+    @Subscribe
+    public void onBlockersDeclared(GameEventBlockersDeclared event) {
+        for (Map.Entry<?, Multimap<CardView, CardView>> entry
+                : event.blockers().entrySet()) {
+            for (CardView blocker : entry.getValue().values()) {
+                callback.publicEvent(
+                        "block", isObserver(event.defendingPlayer()), referenceId(blocker),
+                        null, null, null);
+            }
+        }
+    }
+
+    @Subscribe
+    public void onMulligan(GameEventMulligan event) {
+        callback.publicEvent("mulligan", isObserver(event.player()), null, null, null, null);
+    }
+
+    @Subscribe
+    public void onTurnEnded(GameEventTurnEnded event) {
+        for (Player player : observer.getGame().getPlayers()) {
+            callback.publicEvent(
+                    "mana_left_open", player.getId() == observer.getId(), null,
+                    null, null, untappedManaLands(player));
+        }
     }
 
     /**
@@ -91,5 +155,23 @@ public final class KnowledgeEventObserver {
 
     private static String zoneName(ZoneType zone) {
         return zone == null ? null : zone.name();
+    }
+
+    private boolean isObserver(PlayerView player) {
+        return player != null && player.getId() == observer.getId();
+    }
+
+    private Integer referenceId(CardView card) {
+        return card != null && card.canBeShownTo(observer.getView()) ? card.getId() : null;
+    }
+
+    private static int untappedManaLands(Player player) {
+        int total = 0;
+        for (Card card : player.getCardsIn(ZoneType.Battlefield)) {
+            if (card.isLand() && !card.isTapped() && !card.getManaAbilities().isEmpty()) {
+                total += 1;
+            }
+        }
+        return total;
     }
 }

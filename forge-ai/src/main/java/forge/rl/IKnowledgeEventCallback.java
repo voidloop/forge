@@ -14,4 +14,7 @@ public interface IKnowledgeEventCallback {
 
     void libraryTopVisible(boolean ownerIsObserver, List<Integer> instanceIds,
                            List<String> cardNames, List<Boolean> tokens);
+
+    void publicEvent(String kind, boolean playerIsObserver, Integer instanceId,
+                     String fromZone, String toZone, Integer amount);
 }
