@@ -52,15 +52,25 @@ public class PlayerControllerRl extends PlayerControllerAi {
     public void reveal(CardCollectionView cards, ZoneType zone, Player owner,
                        String messagePrefix, boolean addSuffix) {
         super.reveal(cards, zone, owner, messagePrefix, addSuffix);
-        List<Integer> instanceIds = new ArrayList<>();
-        List<String> cardNames = new ArrayList<>();
-        List<Boolean> tokens = new ArrayList<>();
         for (Card card : cards) {
-            instanceIds.add(card.getId());
-            cardNames.add(card.getName());
-            tokens.add(card.isToken());
+            String name = card.getName();
+            if (card.isFaceDown()) {
+                final var view = card.getView();
+                if (!view.canFaceDownBeShownTo(player.getView())) {
+                    continue;
+                }
+                final var faceUp = view.getAlternateState();
+                if (faceUp == null) {
+                    continue;
+                }
+                name = faceUp.getOracleName();
+            }
+            if (name.isEmpty()) {
+                continue;
+            }
+            callback.cardsRevealed(card.getOwner() == player, zone.name(),
+                    List.of(card.getId()), List.of(name), List.of(card.isToken()));
         }
-        callback.cardsRevealed(owner == player, zone.name(), instanceIds, cardNames, tokens);
     }
 
     /** Publish only the contiguous visible prefix of each library. */

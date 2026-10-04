@@ -14,6 +14,8 @@ import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
 import forge.game.event.GameEventSpellAbilityCast;
 import forge.game.event.GameEventTurnEnded;
+import forge.game.event.GameEventZone;
+import forge.game.event.EventValueChangeType;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.zone.ZoneType;
@@ -43,6 +45,17 @@ public final class KnowledgeEventObserver {
         final boolean ownerIsObserver = card.getOwner().getId() == observer.getId();
         final ZoneType from = zoneType(event.from());
         final ZoneType to = zoneType(event.to());
+        if (to == ZoneType.Command && from != ZoneType.Command) {
+            final Card effect = observer.getGame().findById(card.getId());
+            if (effect != null && effect.isImmutable() && !effect.isEmblem()) {
+                final Card source = effect.getEffectSource();
+                if (source != null
+                        && source.getView().canBeShownTo(observer.getView())
+                        && source.getView().canFaceDownBeShownTo(observer.getView())) {
+                    callback.publicEffectCreated(effect);
+                }
+            }
+        }
         final boolean publicMove = isPublic(from) || isPublic(to);
         // Remembering a card does not identify a later hidden move (e.g. a draw
         // after shuffling). History must not link that move to the remembered card.
@@ -74,6 +87,15 @@ public final class KnowledgeEventObserver {
                 card.getId(), name,
                 ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
+    }
+
+    @Subscribe
+    public void onZoneChanged(GameEventZone event) {
+        // Immutable effects can disappear without a GameEventCardChangeZone.
+        if (event.zoneType() == ZoneType.Command
+                && event.mode() == EventValueChangeType.Removed && event.card() != null) {
+            callback.publicEffectRemoved(event.card().getId());
+        }
     }
 
     @Subscribe

@@ -1,6 +1,7 @@
 package forge.rl;
 
 import java.util.List;
+import forge.game.card.Card;
 
 /** Observer-filtered card-knowledge events delivered to the Python bridge. */
 public interface IKnowledgeEventCallback {
@@ -19,4 +20,8 @@ public interface IKnowledgeEventCallback {
 
     void publicEvent(String kind, boolean playerIsObserver, Integer instanceId,
                      String fromZone, String toZone, Integer amount);
+
+    void publicEffectCreated(Card effect);
+
+    void publicEffectRemoved(int instanceId);
 }
