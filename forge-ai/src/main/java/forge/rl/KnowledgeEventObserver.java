@@ -44,9 +44,11 @@ public final class KnowledgeEventObserver {
         final ZoneType from = zoneType(event.from());
         final ZoneType to = zoneType(event.to());
         final boolean publicMove = isPublic(from) || isPublic(to);
-        final boolean knownMove = ownerIsObserver || publicMove || knownOpponentCards.contains(card.getId());
+        // Remembering a card does not identify a later hidden move (e.g. a draw
+        // after shuffling). History must not link that move to the remembered card.
+        final boolean identifiedMove = ownerIsObserver || publicMove;
         callback.publicEvent(
-                "zone_change", ownerIsObserver, knownMove ? card.getId() : null,
+                "zone_change", ownerIsObserver, identifiedMove ? card.getId() : null,
                 zoneName(from), zoneName(to), null);
         if (!card.canFaceDownBeShownTo(observer.getView())) {
             return;
