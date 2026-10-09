@@ -2,6 +2,8 @@ package forge.rl;
 
 import forge.LobbyPlayer;
 import forge.ai.AiPlayDecision;
+import forge.ai.AiCardMemory;
+import forge.ai.AiCardMemory.MemorySet;
 import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
@@ -18,14 +20,19 @@ import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * PlayerController for the RL agent.
  *
- * All complex decisions (targeting, cost payment, blocking, etc.) fall through
- * to PlayerControllerAi so the agent only needs to learn the high-level action:
- * which spell/ability to play (or pass priority).
+ * Supported ActionDraft roots leave costs and targets unselected for the agent.
+ * Unsupported choices, combat and replacements remain delegated to Forge AI.
  */
 public class PlayerControllerRl extends PlayerControllerAi {
 
@@ -42,6 +49,11 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int cardsBottomed = 0;
     private boolean teacherEnabled = false;
     private SpellAbility teacherChoice = null;
+    private final Map<SpellAbility, SpellAbility> originalActions = new IdentityHashMap<>();
+    private final Set<SpellAbility> conditionalRoots = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<SpellAbility> explicitActions = Collections.newSetFromMap(new IdentityHashMap<>());
+    private SpellAbility explicitAction;
+    private AbilitySub explicitMode;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -100,9 +112,11 @@ public class PlayerControllerRl extends PlayerControllerAi {
      */
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
+        originalActions.clear();
+        conditionalRoots.clear();
         // Forge AI's own pool: also graveyard, exile, command, and library tops.
         CardCollection pool = ComputerUtilAbility.getAvailableCards(getGame(), player);
-        List<SpellAbility> rawPlayable = ComputerUtilAbility.getSpellAbilities(pool, player);
+        List<SpellAbility> rawPlayable = possibleActions(pool);
         rawCandidateCount += rawPlayable.size();
         List<SpellAbility> legalActions = new ArrayList<>();
         for (SpellAbility ability : rawPlayable) {
@@ -110,35 +124,24 @@ public class PlayerControllerRl extends PlayerControllerAi {
                 manaCandidateFilteredCount++;
                 continue;
             }
-            if (!ability.canPlay()) {
-                continue;
-            }
-            if (ability.getApi() == ApiType.Charm && !hasEnoughLegalModes(ability)) {
-                invalidModeCandidateCount++;
-                continue;
-            }
-
-            final boolean isCharm = ability.getApi() == ApiType.Charm;
-            if (isCharm || usesTargeting(ability)) {
-                // Forge AI completes choices outside this high-level action boundary.
-                final AiPlayDecision decision = getAi().canPlaySa(ability);
-                if (isCharm && decision != AiPlayDecision.WillPlay) {
-                    invalidModeCandidateCount++;
+            if (!teacherEnabled && !ability.isLandAbility()) {
+                try {
+                    ActionDraft draft = new ActionDraft(ability, player);
+                    if (!draft.getOptions().isEmpty()) {
+                        SpellAbility root = draft.getRootAction();
+                        legalActions.add(root);
+                        originalActions.put(root, root);
+                        conditionalRoots.add(root);
+                    }
                     continue;
-                }
-                if (usesTargeting(ability)
-                        && !getGame().getStack().hasLegalTargeting(ability)) {
-                    ability.resetTargets();
-                    chooseTargetsFor(ability);
-                }
-                if (usesTargeting(ability)
-                        && !getGame().getStack().hasLegalTargeting(ability)) {
-                    invalidTargetCandidateCount++;
-                    continue;
+                } catch (UnsupportedOperationException unsupported) {
+                    // Only unsupported slices keep the existing delegated preparation.
                 }
             }
-            if (ComputerUtilCost.canPayCost(ability, player, false)) {
-                legalActions.add(ability);
+            final SpellAbility prepared = prepareAction(ability);
+            if (prepared != null) {
+                legalActions.add(prepared);
+                originalActions.put(prepared, ability);
             }
         }
         filteredCandidateCount += legalActions.size();
@@ -157,6 +160,110 @@ public class PlayerControllerRl extends PlayerControllerAi {
             return null;
         }
         return choice;
+    }
+
+    private List<SpellAbility> possibleActions(CardCollection pool) {
+        Map<SpellAbility, Player> actors = new LinkedHashMap<>();
+        for (Card card : pool) {
+            for (var state : card.getStates()) {
+                for (SpellAbility ability : card.getState(state).getSpellAbilities()) {
+                    rememberActivators(ability, actors);
+                }
+            }
+        }
+        try {
+            return ComputerUtilAbility.getSpellAbilities(pool, player).stream()
+                    .map(ability -> ability.copy(player)).toList();
+        } finally {
+            // Native enumeration sets actors recursively; offered copies must not alter originals.
+            actors.forEach(SpellAbility::setActivatingPlayer);
+        }
+    }
+
+    private static void rememberActivators(SpellAbility ability, Map<SpellAbility, Player> actors) {
+        if (actors.containsKey(ability)) {
+            return;
+        }
+        actors.put(ability, ability.getActivatingPlayer());
+        if (ability.getSubAbility() != null) {
+            rememberActivators(ability.getSubAbility(), actors);
+        }
+        for (SpellAbility extra : ability.getAdditionalAbilities().values()) {
+            rememberActivators(extra, actors);
+        }
+        for (List<AbilitySub> choices : ability.getAdditionalAbilityLists().values()) {
+            for (AbilitySub choice : choices) {
+                rememberActivators(choice, actors);
+            }
+        }
+    }
+
+    /** Complete delegated cost/target choices without adding policy decisions. */
+    private SpellAbility prepareAction(SpellAbility original) {
+        final List<SpellAbility> variants = ComputerUtilAbility.getOriginalAndAltCostAbilities(
+                List.of(original), player);
+        SpellAbility fallback = null;
+        for (SpellAbility ability : variants) {
+            final Card host = ability.getHostCard();
+            final SpellAbility previousCast = host.getCastSA();
+            if (ability.isSpell()) {
+                // Forge evaluates cast-dependent targets against this candidate.
+                host.setCastSA(ability);
+            }
+            try {
+                if (!ability.canPlay()) {
+                    continue;
+                }
+                if (ability.getApi() == ApiType.Charm && !hasEnoughLegalModes(ability)) {
+                    invalidModeCandidateCount++;
+                    continue;
+                }
+
+                final boolean isCharm = ability.getApi() == ApiType.Charm;
+                final boolean hasX = ability.costHasX();
+                if (hasX) {
+                    // Complete X even when the AI would defer this legal action.
+                    ComputerUtilCost.setMaxXValue(ability, player, false);
+                }
+                AiPlayDecision decision = AiPlayDecision.WillPlay;
+                if (variants.size() > 1 || isCharm || hasX || usesTargeting(ability)) {
+                    // Forge AI completes choices outside this high-level action boundary.
+                    decision = getAi().canPlaySa(ability);
+                    if (isCharm && decision != AiPlayDecision.WillPlay) {
+                        invalidModeCandidateCount++;
+                        continue;
+                    }
+                    if (usesTargeting(ability)
+                            && !getGame().getStack().hasLegalTargeting(ability)) {
+                        for (SpellAbility part = ability; part != null; part = part.getSubAbility()) {
+                            if (part.usesTargeting() && !part.isTargetNumberValid()) {
+                                part.resetTargets();
+                                chooseTargetsFor(part);
+                            }
+                        }
+                    }
+                    if (usesTargeting(ability)
+                            && !getGame().getStack().hasLegalTargeting(ability)) {
+                        invalidTargetCandidateCount++;
+                        continue;
+                    }
+                }
+                if (ComputerUtilCost.canPayCost(ability, player, false)) {
+                    if (decision == AiPlayDecision.WillPlay) {
+                        return ability;
+                    }
+                    // The model may choose a legal action the AI would defer.
+                    if (fallback == null) {
+                        fallback = ability;
+                    }
+                }
+            } finally {
+                if (ability.isSpell()) {
+                    host.setCastSA(previousCast);
+                }
+            }
+        }
+        return fallback;
     }
 
     /** Ask Forge AI for its own choice at each decision, as an imitation label. */
@@ -197,11 +304,89 @@ public class PlayerControllerRl extends PlayerControllerAi {
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
         chosenActionCount++;
-        final boolean played = super.playChosenSpellAbility(sa);
+        final boolean played = explicitActions.remove(sa)
+                ? playExplicitSpellAbility(sa) : super.playChosenSpellAbility(sa);
         if (!played) {
             failedActionCount++;
         }
         return played;
+    }
+
+    /** Commit a fully selected proposal through Forge's ordinary announcement/payment path. */
+    public boolean playChosenAction(ActionDraft draft) {
+        return playChosenSpellAbility(acceptChosenAction(draft));
+    }
+
+    /** The offered root before delegated preparation, only in its current priority window. */
+    public SpellAbility getOriginalAction(SpellAbility offered) {
+        SpellAbility original = originalActions.get(offered);
+        if (original == null) {
+            throw new IllegalArgumentException("Action is not from this priority window");
+        }
+        return original;
+    }
+
+    /** Integer macro actions delegate details only after the root was selected. */
+    public SpellAbility completeDelegatedAction(SpellAbility offered) {
+        getOriginalAction(offered);
+        if (!conditionalRoots.contains(offered)) {
+            return offered;
+        }
+        SpellAbility prepared = prepareAction(offered.copy(player));
+        if (prepared == null) {
+            throw new IllegalStateException("Delegate cannot complete this root; use explicit choices");
+        }
+        return prepared;
+    }
+
+    /** Compile a proposal returned by the blocking callback; payment happens later. */
+    public SpellAbility acceptChosenAction(ActionDraft draft) {
+        SpellAbility selected = draft.finish();
+        if (selected.getActivatingPlayer() != player || selected.getHostCard().getGame() != getGame()) {
+            throw new IllegalArgumentException("Action proposal belongs to a different player or game");
+        }
+        explicitActions.add(selected);
+        return selected;
+    }
+
+    private boolean playExplicitSpellAbility(SpellAbility selected) {
+        explicitAction = selected;
+        explicitMode = selected.getApi() == ApiType.Charm ? selected.getSubAbility() : null;
+        Map<MemorySet, CardCollection> reserved = new EnumMap<>(MemorySet.class);
+        for (MemorySet set : List.of(MemorySet.HELD_MANA_SOURCES_FOR_NEXT_SPELL,
+                MemorySet.HELD_MANA_SOURCES_FOR_MAIN2, MemorySet.HELD_MANA_SOURCES_FOR_DECLBLK,
+                MemorySet.HELD_MANA_SOURCES_FOR_ENEMY_DECLBLK)) {
+            final var memory = AiCardMemory.getMemorySet(player, set);
+            reserved.put(set, new CardCollection(memory));
+            // A delegate's strategic reservation cannot veto an explicit legal action.
+            memory.clear();
+        }
+        try {
+            return super.playChosenSpellAbility(selected);
+        } finally {
+            explicitAction = null;
+            explicitMode = null;
+            for (var saved : reserved.entrySet()) {
+                final var memory = AiCardMemory.getMemorySet(player, saved.getKey());
+                memory.clear();
+                memory.addAll(saved.getValue());
+            }
+        }
+    }
+
+    @Override
+    public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible,
+                                               int min, int num, boolean allowRepeat) {
+        if (sa != explicitAction || explicitMode == null) {
+            return super.chooseModeForAbility(sa, possible, min, num, allowRepeat);
+        }
+        AbilitySub chosen = sa.getChosenList().get(0);
+        if (min != 1 || num < 1 || allowRepeat || possible.stream().noneMatch(mode ->
+                mode.getMapParams().equals(chosen.getMapParams()))) {
+            throw new IllegalStateException("Selected mode is no longer available");
+        }
+        // Native announcement rebuilds the chain; preserve the selected part's targets.
+        return new ArrayList<>(List.of(explicitMode));
     }
 
     @Override
