@@ -370,6 +370,9 @@ public class DigEffect extends SpellAbilityEffect {
                 for (Card c : movedCards) {
                     Map<AbilityKey, Object> moveParams = AbilityKey.newMap();
                     AbilityKey.addCardZoneTableParams(moveParams, zoneMovements);
+                    if (sa.hasParam("ExileFaceDown")) {
+                        game.getAction().deferZoneChangeEvents(moveParams);
+                    }
 
                     if (destZone1.isDeck()) {
                         c = game.getAction().moveTo(destZone1, c, libraryPosition, sa, AbilityKey.newMap());
@@ -418,6 +421,7 @@ public class DigEffect extends SpellAbilityEffect {
                     if (sa.hasParam("WithMayLook")) {
                         c.addMayLookFaceDownExile(activator);
                     }
+                    game.getAction().fireDeferredZoneChangeEvents(moveParams);
                     if (sa.hasParam("Imprint")) {
                         host.addImprintedCard(c);
                     }

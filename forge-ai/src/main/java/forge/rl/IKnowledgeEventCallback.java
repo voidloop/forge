@@ -5,10 +5,13 @@ import forge.game.card.Card;
 
 /** Observer-filtered card-knowledge events delivered to the Python bridge. */
 public interface IKnowledgeEventCallback {
+    void ownLibraryKnown(List<String> cardNames);
+
     void cardZoneChanged(int instanceId, String cardName, boolean ownerIsObserver,
                          boolean isToken, String fromZone, String toZone);
 
-    void anonymousZoneChange(boolean ownerIsObserver, String fromZone, String toZone);
+    void anonymousZoneChange(boolean ownerIsObserver, String fromZone, String toZone,
+                             Integer visibleInstanceId);
 
     void playerShuffled(boolean ownerIsObserver);
 

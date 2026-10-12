@@ -57,6 +57,7 @@ public enum AbilityKey {
     Defender("Defender"),
     Defenders("Defenders"),
     DefendingPlayer("DefendingPlayer"),
+    DeferredZoneChangeEvents("DeferredZoneChangeEvents"),
     Destination("Destination"),
     Devoured("Devoured"),
     DicePTExchanges("DicePTExchanges"),

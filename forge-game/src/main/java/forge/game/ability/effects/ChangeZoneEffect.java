@@ -729,6 +729,9 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
                     handleExiledWith(gameCard, sa);
                 }
 
+                if (sa.hasParam("ExileFaceDown") || sa.hasParam("FaceDown")) {
+                    game.getAction().deferZoneChangeEvents(moveParams);
+                }
                 movedCard = game.getAction().moveTo(destination, gameCard, libPos, sa, moveParams);
 
                 if (destination.equals(ZoneType.Exile) && lastStateBattlefield.contains(gameCard) && hostCard.equals(gameCard)) {
@@ -762,6 +765,7 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
                 if (sa.hasParam("WithMayLook") || sa.hasParam("Foretold")) {
                     movedCard.addMayLookFaceDownExile(activator);
                 }
+                game.getAction().fireDeferredZoneChangeEvents(moveParams);
 
                 if (sa.isTrigger() && sa.getTrigger().isKeyword(Keyword.WARP)) {
                     Card eff = createEffect(sa, sa.getHostCard().getOwner(), "Warped " + sa.getHostCard(), sa.getHostCard().getImageKey());
@@ -1412,6 +1416,9 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
                     if (!c.canExiledBy(sa, true)) {
                         continue;
                     }
+                    if (sa.hasParam("ExileFaceDown")) {
+                        game.getAction().deferZoneChangeEvents(moveParams);
+                    }
                     movedCard = game.getAction().exile(c, sa, moveParams);
 
                     handleExiledWith(movedCard, sa);
@@ -1431,6 +1438,7 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
                     if (sa.hasParam("WithMayLook") || sa.hasParam("Foretold")) {
                         movedCard.addMayLookFaceDownExile(sa.getActivatingPlayer());
                     }
+                    game.getAction().fireDeferredZoneChangeEvents(moveParams);
                 }
                 else {
                     movedCard = game.getAction().moveTo(destination, c, 0, sa, moveParams);

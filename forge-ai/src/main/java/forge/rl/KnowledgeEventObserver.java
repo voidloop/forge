@@ -9,6 +9,7 @@ import forge.game.card.CardView.CardStateView;
 import forge.game.event.GameEventAttackersDeclared;
 import forge.game.event.GameEventBlockersDeclared;
 import forge.game.event.GameEventCardChangeZone;
+import forge.game.event.GameEventGameStarted;
 import forge.game.event.GameEventLandPlayed;
 import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
@@ -22,6 +23,8 @@ import forge.game.zone.ZoneType;
 import forge.game.zone.ZoneView;
 
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -30,6 +33,7 @@ public final class KnowledgeEventObserver {
     private final Player observer;
     private final IKnowledgeEventCallback callback;
     private final Set<Integer> knownOpponentCards = new HashSet<>();
+    private boolean initialLibraryPublished;
 
     public KnowledgeEventObserver(Player observer, IKnowledgeEventCallback callback) {
         this.observer = observer;
@@ -37,8 +41,25 @@ public final class KnowledgeEventObserver {
     }
 
     @Subscribe
+    public void onGameStarted(GameEventGameStarted event) {
+        // The prepared Constructed deck is known before opening draws. A restart
+        // must not turn a later concealed library into a new exact composition.
+        if (initialLibraryPublished) {
+            return;
+        }
+        initialLibraryPublished = true;
+        final var names = new ArrayList<String>();
+        for (Card card : observer.getCardsIn(ZoneType.Library)) {
+            names.add(card.getName());
+        }
+        Collections.sort(names);
+        callback.ownLibraryKnown(names);
+    }
+
+    @Subscribe
     public void onCardChangeZone(GameEventCardChangeZone event) {
-        final CardView card = event.card();
+        final Card moved = event.card() == null ? null : observer.getGame().findById(event.card().getId());
+        final CardView card = moved == null ? event.card() : moved.getView();
         if (card == null || card.getOwner() == null) {
             return;
         }
@@ -57,19 +78,21 @@ public final class KnowledgeEventObserver {
             }
         }
         final boolean publicMove = isPublic(from) || isPublic(to);
-        // Remembering a card does not identify a later hidden move (e.g. a draw
-        // after shuffling). History must not link that move to the remembered card.
-        final boolean identifiedMove = ownerIsObserver || publicMove;
-        callback.publicEvent(
-                "zone_change", ownerIsObserver, identifiedMove ? card.getId() : null,
+        final PlayerView viewer = observer.getView();
+        final boolean identityVisible = event.sourceViewers().contains(viewer)
+                || card.canBeShownTo(viewer) && card.canFaceDownBeShownTo(viewer);
+        // A public destination can contain an unidentified face-down object.
+        // Send its anonymous transition first so the bridge can break any stale
+        // hidden-library identity link before publishing the visible reference.
+        if ((!ownerIsObserver && !publicMove) || !identityVisible) {
+            final Integer visibleId = publicMove ? card.getId() : null;
+            callback.anonymousZoneChange(ownerIsObserver, zoneName(from), zoneName(to), visibleId);
+            callback.publicEvent("zone_change", ownerIsObserver, visibleId,
+                    zoneName(from), zoneName(to), null);
+            return;
+        }
+        callback.publicEvent("zone_change", ownerIsObserver, card.getId(),
                 zoneName(from), zoneName(to), null);
-        if (!ownerIsObserver && !publicMove) {
-            callback.anonymousZoneChange(false, zoneName(from), zoneName(to));
-            return;
-        }
-        if (!card.canFaceDownBeShownTo(observer.getView())) {
-            return;
-        }
         if (!ownerIsObserver) {
             knownOpponentCards.add(card.getId());
         }

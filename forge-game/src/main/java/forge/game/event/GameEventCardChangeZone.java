@@ -2,16 +2,24 @@ package forge.game.event;
 
 import forge.game.card.Card;
 import forge.game.card.CardView;
+import forge.game.player.PlayerView;
 import forge.game.zone.Zone;
 import forge.game.zone.ZoneView;
 import forge.util.TextUtil;
+import java.util.Set;
 
-public record GameEventCardChangeZone(CardView card, ZoneView from, ZoneView to) implements GameEvent {
+public record GameEventCardChangeZone(CardView card, ZoneView from, ZoneView to,
+                                      Set<PlayerView> sourceViewers) implements GameEvent {
 
     public GameEventCardChangeZone(Card card, Zone zoneFrom, Zone zoneTo) {
+        this(card, zoneFrom, zoneTo, Set.of());
+    }
+
+    public GameEventCardChangeZone(Card card, Zone zoneFrom, Zone zoneTo,
+                                   Set<PlayerView> sourceViewers) {
         this(CardView.get(card),
              zoneFrom == null ? null : zoneFrom.getView(),
-             zoneTo == null ? null : zoneTo.getView());
+             zoneTo == null ? null : zoneTo.getView(), Set.copyOf(sourceViewers));
     }
 
     @Override

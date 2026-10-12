@@ -90,6 +90,15 @@ public class GameAction {
         return changeZone(zoneFrom, zoneTo, c, position, cause, null);
     }
     private Card changeZone(final Zone zoneFrom, Zone zoneTo, final Card c, Integer position, SpellAbility cause, Map<AbilityKey, Object> params) {
+        final Set<PlayerView> sourceViewers = new HashSet<>();
+        if (zoneFrom != null) {
+            for (Player player : game.getPlayers()) {
+                if (c.getView().canBeShownTo(player.getView())
+                        && c.getView().canFaceDownBeShownTo(player.getView())) {
+                    sourceViewers.add(player.getView());
+                }
+            }
+        }
         // 111.11. A copy of a permanent spell becomes a token as it resolves.
         // The token has the characteristics of the spell that became that token.
         // The token is not “created” for the purposes of any replacement effects or triggered abilities that refer to creating a token.
@@ -111,7 +120,7 @@ public class GameAction {
             zoneTo.add(c, position, CardCopyService.getLKICopy(c));
             checkStaticAbilities();
             game.getTriggerHandler().registerActiveTrigger(c, true);
-            game.fireEvent(new GameEventCardChangeZone(c, zoneFrom, zoneTo));
+            fireZoneChangeEvent(new GameEventCardChangeZone(c, zoneFrom, zoneTo, sourceViewers), params);
             return c;
         }
 
@@ -579,7 +588,9 @@ public class GameAction {
         }
 
         // play the change zone sound
-        game.fireEvent(new GameEventCardChangeZone(c, zoneFrom, zoneTo));
+        final Card eventCard = params != null && params.containsKey(AbilityKey.DeferredZoneChangeEvents)
+                ? copied : c;
+        fireZoneChangeEvent(new GameEventCardChangeZone(eventCard, zoneFrom, zoneTo, sourceViewers), params);
 
         game.getTriggerHandler().clearActiveTriggers(copied, null);
         game.getTriggerHandler().registerActiveTrigger(copied, false);
@@ -713,6 +724,30 @@ public class GameAction {
             eff.removeRemembered(copied);
             if (!eff.hasRemembered()) {
                 exileEffect(eff);
+            }
+        }
+    }
+
+    /** Keep notifications behind the native effect's face-down/view-permission update. */
+    public void deferZoneChangeEvents(Map<AbilityKey, Object> params) {
+        params.put(AbilityKey.DeferredZoneChangeEvents, new ArrayList<GameEventCardChangeZone>());
+    }
+
+    @SuppressWarnings("unchecked")
+    private void fireZoneChangeEvent(GameEventCardChangeZone event, Map<AbilityKey, Object> params) {
+        if (params != null && params.containsKey(AbilityKey.DeferredZoneChangeEvents)) {
+            ((List<GameEventCardChangeZone>) params.get(AbilityKey.DeferredZoneChangeEvents)).add(event);
+        } else {
+            game.fireEvent(event);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void fireDeferredZoneChangeEvents(Map<AbilityKey, Object> params) {
+        final var events = (List<GameEventCardChangeZone>) params.remove(AbilityKey.DeferredZoneChangeEvents);
+        if (events != null) {
+            for (GameEventCardChangeZone event : events) {
+                game.fireEvent(event);
             }
         }
     }

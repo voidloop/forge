@@ -151,6 +151,9 @@ public class ChangeZoneAllEffect extends SpellAbilityEffect {
                 if (destination == ZoneType.Exile && !c.canExiledBy(sa, true)) {
                     continue;
                 }
+                if (sa.hasParam("ExileFaceDown")) {
+                    game.getAction().deferZoneChangeEvents(moveParams);
+                }
                 movedCard = game.getAction().moveTo(destination, c, libraryPos, sa, moveParams);
                 if (destination == ZoneType.Exile) {
                     handleExiledWith(movedCard, sa);
@@ -158,6 +161,7 @@ public class ChangeZoneAllEffect extends SpellAbilityEffect {
                 if (sa.hasParam("ExileFaceDown")) {
                     movedCard.turnFaceDown(true);
                 }
+                game.getAction().fireDeferredZoneChangeEvents(moveParams);
             }
 
             if (!movedCard.getZone().equals(originZone)) {
