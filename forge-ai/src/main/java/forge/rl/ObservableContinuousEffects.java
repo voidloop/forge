@@ -1,9 +1,7 @@
 package forge.rl;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import forge.game.Game;
@@ -24,10 +22,6 @@ public final class ObservableContinuousEffects {
 
     public static List<Definition> snapshot(final Game game, final Player observer,
                                             final Set<Integer> publicEffects) {
-        final Map<StaticAbility, StaticEffect> applied = new HashMap<>();
-        for (StaticEffect effect : game.getStaticEffects().getEffects()) {
-            applied.put(effect.getAbility(), effect);
-        }
         final List<Definition> result = new ArrayList<>();
         for (Card source : game.getCardsInGame()) {
             if (!source.getView().canBeShownTo(observer.getView())
@@ -37,7 +31,7 @@ public final class ObservableContinuousEffects {
             }
             for (StaticAbility ability : source.getStaticAbilities()) {
                 if (ability.checkMode(StaticAbilityMode.Continuous) && ability.zonesCheck()) {
-                    result.add(new Definition(ability, applied.get(ability),
+                    result.add(new Definition(ability, game.getStaticEffects().getAppliedEffect(ability),
                             publicApplication(ability), duration(ability)));
                 }
             }

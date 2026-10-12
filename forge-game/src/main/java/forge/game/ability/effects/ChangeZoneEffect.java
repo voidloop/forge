@@ -60,15 +60,6 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
      * @return a {@link java.lang.String} object.
      */
     private static String changeHiddenOriginStackDescription(final SpellAbility sa) {
-        return changeHiddenOriginStackDescription(sa, null);
-    }
-
-    /** Read-only meaning of the current search, without later parts or stack overrides. */
-    public String getSearchDescription(final SpellAbility sa, final Player choosingPlayer) {
-        return changeHiddenOriginStackDescription(sa, choosingPlayer);
-    }
-
-    private static String changeHiddenOriginStackDescription(final SpellAbility sa, final Player choosingPlayer) {
         // TODO build Stack Description will need expansion as more cards are added
 
         final StringBuilder sb = new StringBuilder();
@@ -94,9 +85,7 @@ public class ChangeZoneEffect extends SpellAbilityEffect {
 
         // Player who chooses the cards to move
         List<Player> choosers = Lists.newArrayList();
-        if (choosingPlayer != null) {
-            choosers.add(choosingPlayer);
-        } else if (sa.hasParam("Chooser")) {
+        if (sa.hasParam("Chooser")) {
             choosers = AbilityUtils.getDefinedPlayers(host, sa.getParam("Chooser"), sa);
         }
         if (choosers.isEmpty()) {

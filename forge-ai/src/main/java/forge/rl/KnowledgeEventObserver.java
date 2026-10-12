@@ -25,14 +25,11 @@ import forge.game.zone.ZoneView;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
 
 /** Sends only facts visible to the RL player across the Java/Python boundary. */
 public final class KnowledgeEventObserver {
     private final Player observer;
     private final IKnowledgeEventCallback callback;
-    private final Set<Integer> knownOpponentCards = new HashSet<>();
     private boolean initialLibraryPublished;
 
     public KnowledgeEventObserver(Player observer, IKnowledgeEventCallback callback) {
@@ -94,9 +91,6 @@ public final class KnowledgeEventObserver {
         }
         callback.publicEvent("zone_change", ownerIsObserver, card.getId(),
                 zoneName(from), zoneName(to), null);
-        if (!ownerIsObserver) {
-            knownOpponentCards.add(card.getId());
-        }
         // A face-down card the observer may look at is identified by its face-up state.
         final CardStateView faceUp = card.isFaceDown() ? card.getAlternateState() : null;
         if (card.isFaceDown() && faceUp == null) {
