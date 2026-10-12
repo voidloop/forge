@@ -169,6 +169,7 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
 
     private final Map<Long, PlayerCollection> mayLook = Maps.newHashMap();
     private final PlayerCollection mayLookFaceDownExile = new PlayerCollection();
+    private final Map<SpellAbility, Player> mayLookFaceDownExileSources = Maps.newHashMap();
     private final PlayerCollection mayLookTemp = new PlayerCollection();
 
     // don't use Enum Set Values or it causes a slow down
@@ -3791,6 +3792,15 @@ public class Card extends GameEntity implements Comparable<Card>, IHasSVars, ITr
     public final void addMayLookFaceDownExile(final Player p) {
         mayLookFaceDownExile.add(p);
         updateMayLook();
+    }
+
+    public final void addMayLookFaceDownExile(final Player p, final SpellAbility source) {
+        mayLookFaceDownExileSources.put(source, p);
+        addMayLookFaceDownExile(p);
+    }
+
+    public final Map<SpellAbility, Player> getMayLookFaceDownExileSources() {
+        return Maps.newHashMap(mayLookFaceDownExileSources);
     }
 
     public final void addMayLookAt(final long timestamp, final Iterable<Player> list) {

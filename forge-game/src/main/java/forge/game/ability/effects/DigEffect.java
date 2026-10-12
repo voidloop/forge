@@ -419,7 +419,7 @@ public class DigEffect extends SpellAbilityEffect {
                         c.turnFaceDown(true);
                     }
                     if (sa.hasParam("WithMayLook")) {
-                        c.addMayLookFaceDownExile(activator);
+                        c.addMayLookFaceDownExile(activator, sa);
                     }
                     game.getAction().fireDeferredZoneChangeEvents(moveParams);
                     if (sa.hasParam("Imprint")) {

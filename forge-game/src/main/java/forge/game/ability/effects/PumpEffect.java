@@ -91,6 +91,10 @@ public class PumpEffect extends SpellAbilityEffect {
             host.addRemembered(gameCard);
         }
 
+        if (a != 0 || d != 0 || !keywords.isEmpty() || sa.hasParam("CanBlockAny") || sa.hasParam("CanBlockAmount")) {
+            game.addResolvedContinuousEffect(sa, timestamp, gameCard);
+        }
+
         if (!"Permanent".equals(duration) && !perpetual) {
             // If not Permanent, remove Pumped at EOT
             final GameCommand untilEOT = new GameCommand() {
@@ -113,6 +117,8 @@ public class PumpEffect extends SpellAbilityEffect {
                         gameCard.updateAbilityTextForView();
                     }
 
+                    game.removeResolvedContinuousEffect(timestamp, gameCard);
+
                     game.fireEvent(new GameEventCardStatsChanged(gameCard));
                 }
             };
@@ -130,6 +136,7 @@ public class PumpEffect extends SpellAbilityEffect {
 
         if (!keywords.isEmpty()) {
             p.addChangedKeywords(keywords, List.of(), timestamp, 0);
+            p.getGame().addResolvedContinuousEffect(sa, timestamp, p);
         }
 
         if (!"Permanent".equals(duration)) {
@@ -140,6 +147,7 @@ public class PumpEffect extends SpellAbilityEffect {
                 @Override
                 public void run() {
                     p.removeChangedKeywords(timestamp, 0);
+                    p.getGame().removeResolvedContinuousEffect(timestamp, p);
                 }
             };
             addUntilCommand(sa, untilEOT);

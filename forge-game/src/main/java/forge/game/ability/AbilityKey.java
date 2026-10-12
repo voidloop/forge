@@ -64,6 +64,8 @@ public enum AbilityKey {
     Discard("Discard"),
     DiscardedBefore("DiscardedBefore"),
     DividedShieldAmount("DividedShieldAmount"),
+    DrawCard("DrawCard"),
+    DrawPosition("DrawPosition"),
     EchoPaid("EchoPaid"),
     EffectOnly("EffectOnly"),
     Enlisted("Enlisted"),

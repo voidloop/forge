@@ -8,10 +8,11 @@ public interface IKnowledgeEventCallback {
     void ownLibraryKnown(List<String> cardNames);
 
     void cardZoneChanged(int instanceId, String cardName, boolean ownerIsObserver,
-                         boolean isToken, String fromZone, String toZone);
+                         boolean isToken, String fromZone, String toZone,
+                         Integer drawPosition);
 
     void anonymousZoneChange(boolean ownerIsObserver, String fromZone, String toZone,
-                             Integer visibleInstanceId);
+                             Integer visibleInstanceId, Integer drawPosition);
 
     void playerShuffled(boolean ownerIsObserver);
 

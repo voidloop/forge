@@ -90,6 +90,17 @@ public class GameAction {
         return changeZone(zoneFrom, zoneTo, c, position, cause, null);
     }
     private Card changeZone(final Zone zoneFrom, Zone zoneTo, final Card c, Integer position, SpellAbility cause, Map<AbilityKey, Object> params) {
+        final Integer drawPosition;
+        if (zoneFrom != null && zoneFrom.is(ZoneType.Library) && zoneTo.is(ZoneType.Hand)
+                && params != null && params.get(AbilityKey.DrawCard) instanceof Card drawn
+                && drawn.equalsWithGameTimestamp(c)
+                && params.get(AbilityKey.DrawPosition) instanceof Integer index
+                && index >= 0 && index < zoneFrom.size()
+                && zoneFrom.getCards().get(index).equalsWithGameTimestamp(c)) {
+            drawPosition = index;
+        } else {
+            drawPosition = null;
+        }
         final Set<PlayerView> sourceViewers = new HashSet<>();
         if (zoneFrom != null) {
             for (Player player : game.getPlayers()) {
@@ -120,7 +131,7 @@ public class GameAction {
             zoneTo.add(c, position, CardCopyService.getLKICopy(c));
             checkStaticAbilities();
             game.getTriggerHandler().registerActiveTrigger(c, true);
-            fireZoneChangeEvent(new GameEventCardChangeZone(c, zoneFrom, zoneTo, sourceViewers), params);
+            fireZoneChangeEvent(new GameEventCardChangeZone(c, zoneFrom, zoneTo, sourceViewers, drawPosition), params);
             return c;
         }
 
@@ -590,7 +601,7 @@ public class GameAction {
         // play the change zone sound
         final Card eventCard = params != null && params.containsKey(AbilityKey.DeferredZoneChangeEvents)
                 ? copied : c;
-        fireZoneChangeEvent(new GameEventCardChangeZone(eventCard, zoneFrom, zoneTo, sourceViewers), params);
+        fireZoneChangeEvent(new GameEventCardChangeZone(eventCard, zoneFrom, zoneTo, sourceViewers, drawPosition), params);
 
         game.getTriggerHandler().clearActiveTriggers(copied, null);
         game.getTriggerHandler().registerActiveTrigger(copied, false);

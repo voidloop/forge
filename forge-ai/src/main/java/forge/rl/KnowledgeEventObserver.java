@@ -84,9 +84,10 @@ public final class KnowledgeEventObserver {
         // A public destination can contain an unidentified face-down object.
         // Send its anonymous transition first so the bridge can break any stale
         // hidden-library identity link before publishing the visible reference.
-        if ((!ownerIsObserver && !publicMove) || !identityVisible) {
+        if (!identityVisible) {
             final Integer visibleId = publicMove ? card.getId() : null;
-            callback.anonymousZoneChange(ownerIsObserver, zoneName(from), zoneName(to), visibleId);
+            callback.anonymousZoneChange(ownerIsObserver, zoneName(from), zoneName(to),
+                    visibleId, event.drawPosition());
             callback.publicEvent("zone_change", ownerIsObserver, visibleId,
                     zoneName(from), zoneName(to), null);
             return;
@@ -109,7 +110,7 @@ public final class KnowledgeEventObserver {
         callback.cardZoneChanged(
                 card.getId(), name,
                 ownerIsObserver, card.isToken(),
-                zoneName(from), zoneName(to));
+                zoneName(from), zoneName(to), event.drawPosition());
     }
 
     @Subscribe

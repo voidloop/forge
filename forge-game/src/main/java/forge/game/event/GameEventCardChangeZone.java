@@ -9,7 +9,8 @@ import forge.util.TextUtil;
 import java.util.Set;
 
 public record GameEventCardChangeZone(CardView card, ZoneView from, ZoneView to,
-                                      Set<PlayerView> sourceViewers) implements GameEvent {
+                                      Set<PlayerView> sourceViewers,
+                                      Integer drawPosition) implements GameEvent {
 
     public GameEventCardChangeZone(Card card, Zone zoneFrom, Zone zoneTo) {
         this(card, zoneFrom, zoneTo, Set.of());
@@ -17,9 +18,14 @@ public record GameEventCardChangeZone(CardView card, ZoneView from, ZoneView to,
 
     public GameEventCardChangeZone(Card card, Zone zoneFrom, Zone zoneTo,
                                    Set<PlayerView> sourceViewers) {
+        this(card, zoneFrom, zoneTo, sourceViewers, null);
+    }
+
+    public GameEventCardChangeZone(Card card, Zone zoneFrom, Zone zoneTo,
+                                   Set<PlayerView> sourceViewers, Integer drawPosition) {
         this(CardView.get(card),
              zoneFrom == null ? null : zoneFrom.getView(),
-             zoneTo == null ? null : zoneTo.getView(), Set.copyOf(sourceViewers));
+             zoneTo == null ? null : zoneTo.getView(), Set.copyOf(sourceViewers), drawPosition);
     }
 
     @Override

@@ -73,6 +73,10 @@ public class PumpAllEffect extends SpellAbilityEffect {
                 sa.getHostCard().addRemembered(tgtC);
             }
 
+            if (a != 0 || d != 0 || !keywords.isEmpty()) {
+                game.addResolvedContinuousEffect(sa, timestamp, tgtC);
+            }
+
             if (!"Permanent".equals(sa.getParam("Duration")) && !perpetual) {
                 // If not Permanent, remove Pumped at EOT
                 final GameCommand untilEOT = new GameCommand() {
@@ -85,6 +89,8 @@ public class PumpAllEffect extends SpellAbilityEffect {
                         tgtC.removeHiddenExtrinsicKeywords(timestamp, 0);
 
                         tgtC.updatePTforView();
+
+                        game.removeResolvedContinuousEffect(timestamp, tgtC);
 
                         game.fireEvent(new GameEventCardStatsChanged(tgtC));
                     }
