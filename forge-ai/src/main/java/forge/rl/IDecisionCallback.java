@@ -1,6 +1,7 @@
 package forge.rl;
 
 import forge.game.spellability.SpellAbility;
+import forge.game.card.Card;
 
 import java.util.List;
 
@@ -19,6 +20,11 @@ public interface IDecisionCallback {
      * @return chosen action candidates to play, or null to pass priority
      */
     List<SpellAbility> chooseActionsToPlay(List<SpellAbility> legalActions);
+
+    /** A real resolution decision; candidates were inspected legally by the decider. */
+    default Card chooseCardForSearch(SpellAbility effect, List<Card> candidates, boolean optional) {
+        throw new UnsupportedOperationException("Resolution callback is not implemented");
+    }
 
     /** Facts explicitly shown to the RL player outside a priority decision. */
     default void cardsRevealed(boolean ownerIsObserver, String zone,

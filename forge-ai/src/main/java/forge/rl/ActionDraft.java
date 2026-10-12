@@ -23,6 +23,8 @@ import forge.game.spellability.AbilitySub;
 import forge.game.spellability.OptionalCost;
 import forge.game.spellability.OptionalCostValue;
 import forge.game.spellability.TargetRestrictions;
+import forge.game.spellability.TargetChoices;
+import forge.game.ability.AbilityUtils;
 import forge.game.staticability.StaticAbilityMode;
 import forge.game.zone.ZoneType;
 
@@ -52,11 +54,13 @@ public final class ActionDraft {
     private final List<SpellAbility> costs = new ArrayList<>();
     private final CardCollection discarded = new CardCollection();
     private final Map<Card, Long> selectedTimestamps = new HashMap<>();
+    private final List<AbilitySub> modes = new ArrayList<>();
     private SpellAbility action;
     private SpellAbility effect;
     private CostDiscard discardCost;
     private Stage stage = Stage.Cost;
     private boolean finished;
+    private int probes;
 
     public ActionDraft(SpellAbility original, Player payer) {
         this.payer = payer;
@@ -151,11 +155,10 @@ public final class ActionDraft {
                 }
             }
             case Mode -> {
-                List<AbilitySub> chosen = new ArrayList<>(List.of((AbilitySub) options.get(index)));
-                action.setChosenList(chosen);
-                CharmEffect.chainAbilities(action, chosen);
-                effect = action.getSubAbility();
-                stage = targetStage();
+                modes.add((AbilitySub) options.get(index));
+                if (modes.size() == getMaximum()) {
+                    finishModes();
+                }
             }
             case Target -> {
                 GameEntity target = (GameEntity) options.get(index);
@@ -164,7 +167,7 @@ public final class ActionDraft {
                     selectedTimestamps.put(card, card.getGameTimestamp());
                 }
                 if (effect.isMaxTargetChosen()) {
-                    stage = Stage.Complete;
+                    advanceEffect();
                 }
             }
             case Complete -> throw new IllegalStateException("Action is already complete");
@@ -175,7 +178,56 @@ public final class ActionDraft {
     public boolean canFinish() {
         checkCurrent();
         return stage == Stage.Complete
-                || stage == Stage.Target && effect.isTargetNumberValid();
+                || stage == Stage.Mode && modes.size() >= getMinimum()
+                || stage == Stage.Target && effect.isTargetNumberValid()
+                    && inCastContext(action, () -> hasEnoughTargets(effect.getSubAbility()));
+    }
+
+    /** Complete this group, never pass priority or skip a mandatory later group. */
+    public void finishChoice() {
+        if (!canFinish() || stage == Stage.Complete) {
+            throw new IllegalStateException("The current choice cannot be completed");
+        }
+        if (stage == Stage.Mode) {
+            finishModes();
+        } else {
+            advanceEffect();
+        }
+    }
+
+    public int getMinimum() {
+        return stage == Stage.Mode ? modeCount(action, "MinCharmNum", "CharmNum")
+                : stage == Stage.Target ? effect.getMinTargets() : 1;
+    }
+
+    public int getMaximum() {
+        return stage == Stage.Mode ? modeCount(action, "CharmNum", "CharmNum")
+                : stage == Stage.Target ? effect.getMaxTargets() : 1;
+    }
+
+    public boolean allowsRepeat() {
+        return stage == Stage.Mode && action.hasParam("CanRepeatModes");
+    }
+
+    public List<AbilitySub> getSelectedModes() { return List.copyOf(modes); }
+
+    private static int modeCount(SpellAbility ability, String param, String fallback) {
+        return AbilityUtils.calculateAmount(ability.getHostCard(),
+                ability.getParamOrDefault(param, ability.getParamOrDefault(fallback, "1")), ability);
+    }
+
+    private void finishModes() {
+        action.setChosenList(new ArrayList<>(modes));
+        action.setSubAbility(null);
+        CharmEffect.chainAbilities(action, action.getChosenList());
+        detachTargets(action.getSubAbility());
+        effect = action.getSubAbility();
+        stage = targetStage();
+    }
+
+    private void advanceEffect() {
+        effect = effect.getSubAbility();
+        stage = targetStage();
     }
 
     public SpellAbility finish() {
@@ -198,8 +250,10 @@ public final class ActionDraft {
     }
 
     private Stage targetStage() {
-        return effect.usesTargeting() && effect.getMaxTargets() > 0
-                ? Stage.Target : Stage.Complete;
+        while (effect != null && (!effect.usesTargeting() || effect.getMaxTargets() == 0)) {
+            effect = effect.getSubAbility();
+        }
+        return effect == null ? Stage.Complete : Stage.Target;
     }
 
     private Stage effectStage() {
@@ -250,14 +304,22 @@ public final class ActionDraft {
     }
 
     private boolean targetsStillLegal() {
-        if (!effect.usesTargeting()) {
-            return true;
-        }
         SpellAbility validation = action.copy(payer);
         detachTargets(validation);
-        SpellAbility validationEffect = validation.getApi() == ApiType.Charm
-                ? validation.getSubAbility() : validation;
-        return inCastContext(validation, () -> targetOptions(validationEffect).containsAll(effect.getTargets()));
+        SpellAbility originalPart = action;
+        for (SpellAbility part = validation; part != null; part = part.getSubAbility()) {
+            if (part.usesTargeting()) {
+                for (var target : originalPart.getTargets()) {
+                    if (!part.canTarget(target) || part.getTargets().contains(target)) {
+                        return false;
+                    }
+                    part.getTargets().add(target);
+                }
+                if (!part.isTargetNumberValid()) { return false; }
+            }
+            originalPart = originalPart.getSubAbility();
+        }
+        return true;
     }
 
     private void checkCurrent() {
@@ -287,18 +349,88 @@ public final class ActionDraft {
     }
 
     private boolean hasEnoughTargets(SpellAbility ability) {
-        if (ability.getApi() == ApiType.Charm) {
-            return !modeOptions(ability).isEmpty();
+        probes = 0;
+        return feasibleTargets(ability);
+    }
+
+    private boolean feasibleTargets(SpellAbility ability) {
+        if (++probes > 4096) {
+            throw new OverflowException("Target feasibility exceeds its native probe budget");
         }
-        return !ability.usesTargeting() || targetOptions(ability).size() >= ability.getMinTargets();
+        if (ability == null) { return true; }
+        if (ability.getApi() == ApiType.Charm) {
+            List<AbilitySub> options = modeOptions(ability);
+            int minimum = modeCount(ability, "MinCharmNum", "CharmNum");
+            return minimum == 0 || (ability.hasParam("CanRepeatModes")
+                    ? !options.isEmpty() : options.size() >= minimum);
+        }
+        if (!ability.usesTargeting()) { return feasibleTargets(ability.getSubAbility()); }
+        if (ability.isTargetNumberValid() && feasibleTargets(ability.getSubAbility())) { return true; }
+        if (ability.isMaxTargetChosen()) { return false; }
+        // Native canTarget supplies all dependencies; only detached target lists are changed.
+        TargetChoices previous = ability.getTargets().clone();
+        for (GameEntity target : rawTargets(ability)) {
+            ability.getTargets().add(target);
+            try {
+                if (feasibleTargets(ability)) { return true; }
+            } finally {
+                ability.setTargets(previous.clone());
+            }
+        }
+        return false;
     }
 
     private List<AbilitySub> modeOptions(SpellAbility ability) {
-        return CharmEffect.makePossibleOptions(ability).stream()
-                .filter(this::hasEnoughTargets).toList();
+        List<AbilitySub> possible = CharmEffect.makePossibleOptions(ability);
+        List<AbilitySub> options = new ArrayList<>();
+        for (AbilitySub mode : possible) {
+            if (!ability.hasParam("CanRepeatModes") && modes.contains(mode)) { continue; }
+            List<AbilitySub> prefix = new ArrayList<>(modes);
+            prefix.add(mode);
+            if (modeCompletion(ability, possible, prefix, new int[] {0})) { options.add(mode); }
+        }
+        return options;
+    }
+
+    private boolean modeCompletion(SpellAbility ability, List<AbilitySub> possible,
+            List<AbilitySub> prefix, int[] budget) {
+        if (++budget[0] > 4096) {
+            throw new OverflowException("Mode feasibility exceeds its native probe budget");
+        }
+        if (prefix.size() >= modeCount(ability, "MinCharmNum", "CharmNum")) {
+            SpellAbility candidate = ability.copy(payer);
+            candidate.setSubAbility(null);
+            CharmEffect.chainAbilities(candidate, new ArrayList<>(prefix));
+            detachTargets(candidate.getSubAbility());
+            return hasEnoughTargets(candidate.getSubAbility());
+        }
+        for (AbilitySub mode : possible) {
+            if (!ability.hasParam("CanRepeatModes") && prefix.contains(mode)) { continue; }
+            prefix.add(mode);
+            try {
+                if (modeCompletion(ability, possible, prefix, budget)) { return true; }
+            } finally {
+                prefix.remove(prefix.size() - 1);
+            }
+        }
+        return false;
     }
 
     private List<GameEntity> targetOptions(SpellAbility ability) {
+        List<GameEntity> options = new ArrayList<>();
+        for (GameEntity target : rawTargets(ability)) {
+            TargetChoices previous = ability.getTargets().clone();
+            ability.getTargets().add(target);
+            try {
+                if (hasEnoughTargets(ability)) { options.add(target); }
+            } finally {
+                ability.setTargets(previous);
+            }
+        }
+        return options;
+    }
+
+    private List<GameEntity> rawTargets(SpellAbility ability) {
         return ability.getTargetRestrictions().getAllCandidates(ability).stream()
                 .filter(target -> !ability.getTargets().contains(target)).toList();
     }
@@ -334,6 +466,7 @@ public final class ActionDraft {
     }
 
     private static void detachTargets(SpellAbility ability) {
+        if (ability == null) { return; }
         if (ability.usesTargeting()) {
             // Forge's ability copy shares target restrictions with the live source.
             ability.setTargetRestrictions(new TargetRestrictions(ability.getTargetRestrictions()));
@@ -350,9 +483,8 @@ public final class ActionDraft {
     }
 
     private static void validateSupported(SpellAbility ability) {
-        // shortcut: multiple/repeated modes and independently targeted chains need further choice slices.
         if (ability.costHasX() && !ability.costHasManaX()
-                || ability.getSubAbility() != null || ability.isManaAbility() || ability.isCastFaceDown()) {
+                || ability.isManaAbility() || ability.isCastFaceDown()) {
             throw new UnsupportedOperationException("This action needs another explicit-choice slice");
         }
         if (ability.isSpell()) {
@@ -379,20 +511,33 @@ public final class ActionDraft {
         }
         validatePayments(ability.getPayCosts().getCostParts());
         validateTargeting(ability);
+        for (SpellAbility part = ability.getSubAbility(); part != null; part = part.getSubAbility()) {
+            validateTargeting(part);
+            if (part.getApi() == ApiType.Charm) {
+                throw new UnsupportedOperationException("Nested modes need another choice slice");
+            }
+        }
         if (ability.getApi() == ApiType.Charm) {
-            if (!ability.getParamOrDefault("CharmNum", "1").equals("1")
-                    || !ability.getParamOrDefault("MinCharmNum", "1").equals("1")
-                    || ability.hasParam("CanRepeatModes") || ability.hasParam("Random")
-                    || ability.hasParam("Optional") || ability.hasParam("Chooser")) {
+            if (!ability.getParamOrDefault("CharmNum", "1").matches("[0-9]+")
+                    || !ability.getParamOrDefault("MinCharmNum", "1").matches("[0-9]+")
+                    || ability.hasParam("Random") || ability.hasParam("Optional")
+                    || ability.hasParam("Chooser") || ability.hasParam("Pawprint")) {
                 throw new UnsupportedOperationException("This modal announcement needs another choice slice");
             }
             for (AbilitySub mode : ability.getAdditionalAbilityList("Choices")) {
                 validateTargeting(mode);
+                if (mode.hasParam("ModeCost") || mode.hasParam("PrecostDesc")) {
+                    throw new UnsupportedOperationException("Paid modes need another payment slice");
+                }
                 for (SpellAbility part = mode.getSubAbility(); part != null; part = part.getSubAbility()) {
-                    if (part.usesTargeting() || part.getApi() == ApiType.Charm) {
+                    validateTargeting(part);
+                    if (part.getApi() == ApiType.Charm) {
                         throw new UnsupportedOperationException("This modal chain needs another choice slice");
                     }
                 }
+            }
+            if (modeCount(ability, "CharmNum", "CharmNum") > 63) {
+                throw new OverflowException("Mode sequence exceeds the choice-step budget");
             }
         }
     }
@@ -433,10 +578,8 @@ public final class ActionDraft {
                     || target.isDifferentNames() || target.isEqualToughness()
                     || target.isSameController() || target.isWithoutSameCreatureType()
                     || target.isWithSameCreatureType() || target.isWithSameCardType()
-                    || ability.hasParam("TargetsWithRelatedProperty")
                     || ability.hasParam("TargetsWithSharedCardType")
                     || ability.hasParam("TargetsWithSharedTypes")
-                    || ability.hasParam("TargetsWithDefinedController")
                     || ability.hasParam("MaxTotalTargetCMC") || ability.hasParam("MaxTotalTargetPower")) {
                 throw new UnsupportedOperationException("Dependent targets need another targeting slice");
             }

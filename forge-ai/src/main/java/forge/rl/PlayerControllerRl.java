@@ -15,6 +15,8 @@ import forge.game.card.Card;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCollectionView;
 import forge.game.player.Player;
+import forge.game.player.DelayedReveal;
+import forge.game.player.PlayerActionConfirmMode;
 import forge.game.spellability.AbilitySub;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
@@ -48,12 +50,18 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int failedActionCount = 0;
     private int cardsBottomed = 0;
     private boolean teacherEnabled = false;
+    private boolean explicitChoicesEnabled = true;
     private SpellAbility teacherChoice = null;
     private final Map<SpellAbility, SpellAbility> originalActions = new IdentityHashMap<>();
     private final Set<SpellAbility> conditionalRoots = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<SpellAbility> explicitActions = Collections.newSetFromMap(new IdentityHashMap<>());
     private SpellAbility explicitAction;
-    private AbilitySub explicitMode;
+    private List<AbilitySub> explicitModes;
+    private int explicitActionCount;
+    private int delegatedActionCount;
+    private int modelSearchCount;
+    private int delegatedSearchCount;
+    private SpellAbility declinedSearch;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -271,6 +279,11 @@ public class PlayerControllerRl extends PlayerControllerAi {
         teacherEnabled = enabled;
     }
 
+    /** Registered control treatment: keep root discovery identical, delegate details. */
+    public void setExplicitChoicesEnabled(boolean enabled) {
+        explicitChoicesEnabled = enabled;
+    }
+
     /** Forge AI's choice at the current decision; null means it would pass. */
     public SpellAbility getTeacherChoice() {
         return teacherChoice;
@@ -329,6 +342,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
     /** Integer macro actions delegate details only after the root was selected. */
     public SpellAbility completeDelegatedAction(SpellAbility offered) {
         getOriginalAction(offered);
+        delegatedActionCount++;
         if (!conditionalRoots.contains(offered)) {
             return offered;
         }
@@ -346,12 +360,29 @@ public class PlayerControllerRl extends PlayerControllerAi {
             throw new IllegalArgumentException("Action proposal belongs to a different player or game");
         }
         explicitActions.add(selected);
+        explicitActionCount++;
         return selected;
     }
 
     private boolean playExplicitSpellAbility(SpellAbility selected) {
         explicitAction = selected;
-        explicitMode = selected.getApi() == ApiType.Charm ? selected.getSubAbility() : null;
+        explicitModes = null;
+        if (selected.getApi() == ApiType.Charm) {
+            explicitModes = new ArrayList<>();
+            SpellAbility part = selected.getSubAbility();
+            for (AbilitySub mode : selected.getChosenList()) {
+                AbilitySub copy = (AbilitySub) part.copy(player);
+                SpellAbility tail = copy;
+                for (SpellAbility original = mode; original.getSubAbility() != null;
+                     original = original.getSubAbility()) {
+                    tail = tail.getSubAbility();
+                    part = part.getSubAbility();
+                }
+                part = part.getSubAbility();
+                tail.setSubAbility(null);
+                explicitModes.add(copy);
+            }
+        }
         Map<MemorySet, CardCollection> reserved = new EnumMap<>(MemorySet.class);
         for (MemorySet set : List.of(MemorySet.HELD_MANA_SOURCES_FOR_NEXT_SPELL,
                 MemorySet.HELD_MANA_SOURCES_FOR_MAIN2, MemorySet.HELD_MANA_SOURCES_FOR_DECLBLK,
@@ -365,7 +396,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
             return super.playChosenSpellAbility(selected);
         } finally {
             explicitAction = null;
-            explicitMode = null;
+            explicitModes = null;
             for (var saved : reserved.entrySet()) {
                 final var memory = AiCardMemory.getMemorySet(player, saved.getKey());
                 memory.clear();
@@ -377,17 +408,70 @@ public class PlayerControllerRl extends PlayerControllerAi {
     @Override
     public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible,
                                                int min, int num, boolean allowRepeat) {
-        if (sa != explicitAction || explicitMode == null) {
+        if (sa != explicitAction || explicitModes == null) {
             return super.chooseModeForAbility(sa, possible, min, num, allowRepeat);
         }
-        AbilitySub chosen = sa.getChosenList().get(0);
-        if (min != 1 || num < 1 || allowRepeat || possible.stream().noneMatch(mode ->
-                mode.getMapParams().equals(chosen.getMapParams()))) {
-            throw new IllegalStateException("Selected mode is no longer available");
+        if (explicitModes.size() < min || explicitModes.size() > num) {
+            throw new IllegalStateException("Selected mode cardinality is no longer available");
+        }
+        Set<Map<String, String>> used = new java.util.HashSet<>();
+        for (AbilitySub chosen : sa.getChosenList()) {
+            if (possible.stream().noneMatch(mode -> mode.getMapParams().equals(chosen.getMapParams()))
+                    || !allowRepeat && !used.add(chosen.getMapParams())) {
+                throw new IllegalStateException("Selected mode is no longer available");
+            }
         }
         // Native announcement rebuilds the chain; preserve the selected part's targets.
-        return new ArrayList<>(List.of(explicitMode));
+        return new ArrayList<>(explicitModes);
     }
+
+    @Override
+    public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin,
+            SpellAbility sa, CardCollection candidates, DelayedReveal delayedReveal,
+            String prompt, boolean optional, Player decider) {
+        // shortcut: one-card library searches only; widen when another callback profile is qualified.
+        if (!explicitChoicesEnabled || teacherEnabled || decider != player || sa.getApi() != ApiType.ChangeZone
+                || origin.size() != 1 || origin.get(0) != ZoneType.Library
+                || !sa.getParamOrDefault("ChangeNum", "1").equals("1")
+                || sa.hasParam("Defined") || sa.hasParam("AtRandom")
+                || sa.hasParam("Optional")
+                || candidates.stream().anyMatch(card -> card.getOwner() != player)
+                || sa.getParamOrDefault("ChangeType", "Card").startsWith("EACH")) {
+            delegatedSearchCount++;
+            return super.chooseSingleCardForZoneChange(destination, origin, sa, candidates,
+                    delayedReveal, prompt, optional, decider);
+        }
+        if (candidates.isEmpty()) { return null; }
+        if (delayedReveal != null) { reveal(delayedReveal); }
+        List<Card> options = new ArrayList<>(candidates);
+        Map<Card, Long> timestamps = new IdentityHashMap<>();
+        options.forEach(card -> timestamps.put(card, card.getGameTimestamp()));
+        Card selected = callback.chooseCardForSearch(sa, options, optional);
+        if (getGame().isGameOver()) { return null; }
+        if (selected == null ? !optional : !timestamps.containsKey(selected)
+                || selected.getGameTimestamp() != timestamps.get(selected)
+                || !selected.isInZone(ZoneType.Library)) {
+            throw new IllegalArgumentException("Resolution selection is not a current legal candidate");
+        }
+        modelSearchCount++;
+        declinedSearch = selected == null ? sa : null;
+        return selected;
+    }
+
+    @Override
+    public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
+            List<String> options, Card cardToShow, Map<String, Object> params) {
+        if (sa == declinedSearch && mode == PlayerActionConfirmMode.ChangeZoneGeneral) {
+            declinedSearch = null;
+            return true;
+        }
+        return super.confirmAction(sa, mode, message, options, cardToShow, params);
+    }
+
+    public int getExplicitActionCount() { return explicitActionCount; }
+    public int getDelegatedActionCount() { return delegatedActionCount; }
+    public int getModelSearchCount() { return modelSearchCount; }
+    public int getDelegatedSearchCount() { return delegatedSearchCount; }
 
     @Override
     public CardCollectionView tuckCardsViaMulligan(
