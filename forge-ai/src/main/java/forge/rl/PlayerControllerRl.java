@@ -7,13 +7,18 @@ import forge.ai.AiCardMemory.MemorySet;
 import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
+import forge.card.mana.ManaCost;
 import forge.game.Game;
+import forge.game.GameEntity;
 import forge.game.ability.AbilityUtils;
 import forge.game.ability.ApiType;
 import forge.game.ability.effects.CharmEffect;
 import forge.game.card.Card;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCollectionView;
+import forge.game.combat.Combat;
+import forge.game.cost.CostPartMana;
+import forge.game.mana.ManaConversionMatrix;
 import forge.game.player.Player;
 import forge.game.player.DelayedReveal;
 import forge.game.player.PlayerActionConfirmMode;
@@ -62,6 +67,16 @@ public class PlayerControllerRl extends PlayerControllerAi {
     private int modelSearchCount;
     private int delegatedSearchCount;
     private SpellAbility declinedSearch;
+    // Selected delegation boundaries, not a total of all inherited AI decisions.
+    private int delegatedMulliganKeepCount;
+    private int delegatedMulliganTuckCount;
+    private int delegatedAttackDeclarationCount;
+    private int delegatedBlockDeclarationCount;
+    private int delegatedCombatDamageAssignmentCount;
+    private int delegatedManaPaymentCount;
+    private int delegatedHandSizeDiscardCount;
+    private int legacyDiscoveryPreparationCount;
+    private int legacySelectedPreparationCount;
 
     public PlayerControllerRl(Game game, Player p, LobbyPlayer lp, IDecisionCallback callback) {
         super(game, p, lp);
@@ -146,6 +161,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
                     // Only unsupported slices keep the existing delegated preparation.
                 }
             }
+            legacyDiscoveryPreparationCount++;
             final SpellAbility prepared = prepareAction(ability);
             if (prepared != null) {
                 legalActions.add(prepared);
@@ -346,6 +362,7 @@ public class PlayerControllerRl extends PlayerControllerAi {
         if (!conditionalRoots.contains(offered)) {
             return offered;
         }
+        legacySelectedPreparationCount++;
         SpellAbility prepared = prepareAction(offered.copy(player));
         if (prepared == null) {
             throw new IllegalStateException("Delegate cannot complete this root; use explicit choices");
@@ -474,12 +491,61 @@ public class PlayerControllerRl extends PlayerControllerAi {
     public int getDelegatedSearchCount() { return delegatedSearchCount; }
 
     @Override
+    public boolean mulliganKeepHand(Player firstPlayer, int cardsToReturn) {
+        delegatedMulliganKeepCount++;
+        return super.mulliganKeepHand(firstPlayer, cardsToReturn);
+    }
+
+    @Override
     public CardCollectionView tuckCardsViaMulligan(
             CardCollectionView hand, int cardsToReturn) {
+        delegatedMulliganTuckCount++;
         CardCollectionView cards = super.tuckCardsViaMulligan(hand, cardsToReturn);
         cardsBottomed += cards.size();
         return cards;
     }
+
+    @Override
+    public void declareAttackers(Player attacker, Combat combat) {
+        delegatedAttackDeclarationCount++;
+        super.declareAttackers(attacker, combat);
+    }
+
+    @Override
+    public void declareBlockers(Player defender, Combat combat) {
+        delegatedBlockDeclarationCount++;
+        super.declareBlockers(defender, combat);
+    }
+
+    @Override
+    public Map<Card, Integer> assignCombatDamage(Card attacker, CardCollectionView blockers,
+            CardCollectionView remaining, int damageDealt, GameEntity defender, boolean overrideOrder) {
+        delegatedCombatDamageAssignmentCount++;
+        return super.assignCombatDamage(attacker, blockers, remaining, damageDealt, defender, overrideOrder);
+    }
+
+    @Override
+    public boolean payManaCost(ManaCost toPay, CostPartMana costPartMana, SpellAbility sa,
+            String prompt, ManaConversionMatrix matrix, boolean effect) {
+        delegatedManaPaymentCount++;
+        return super.payManaCost(toPay, costPartMana, sa, prompt, matrix, effect);
+    }
+
+    @Override
+    public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
+        delegatedHandSizeDiscardCount++;
+        return super.chooseCardsToDiscardToMaximumHandSize(numDiscard);
+    }
+
+    public int getDelegatedMulliganKeepCount() { return delegatedMulliganKeepCount; }
+    public int getDelegatedMulliganTuckCount() { return delegatedMulliganTuckCount; }
+    public int getDelegatedAttackDeclarationCount() { return delegatedAttackDeclarationCount; }
+    public int getDelegatedBlockDeclarationCount() { return delegatedBlockDeclarationCount; }
+    public int getDelegatedCombatDamageAssignmentCount() { return delegatedCombatDamageAssignmentCount; }
+    public int getDelegatedManaPaymentCount() { return delegatedManaPaymentCount; }
+    public int getDelegatedHandSizeDiscardCount() { return delegatedHandSizeDiscardCount; }
+    public int getLegacyDiscoveryPreparationCount() { return legacyDiscoveryPreparationCount; }
+    public int getLegacySelectedPreparationCount() { return legacySelectedPreparationCount; }
 
     public int getRawCandidateCount() {
         return rawCandidateCount;
