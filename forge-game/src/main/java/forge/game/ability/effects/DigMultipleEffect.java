@@ -118,17 +118,21 @@ public class DigMultipleEffect extends SpellAbilityEffect {
                 for (Card c : chosen) {
                     final ZoneType origin = c.getZone().getZoneType();
                     final PlayerZone zone = c.getOwner().getZone(destZone1);
+                    Map<AbilityKey, Object> moveParams = AbilityKey.newMap();
+                    if (sa.hasParam("ExileFaceDown")) {
+                        game.getAction().deferZoneChangeEvents(moveParams);
+                    }
 
                     if (!sa.hasParam("ChangeLater")) {
                         if (zone.getZoneType().isDeck()) {
-                            c = game.getAction().moveTo(destZone1, c, libraryPosition, sa, AbilityKey.newMap());
+                            c = game.getAction().moveTo(destZone1, c, libraryPosition, sa, moveParams);
                         } else {
                             if (destZone1.equals(ZoneType.Battlefield)) {
                                 if (sa.hasParam("Tapped")) {
                                     c.setTapped(true);
                                 }
                             }
-                            c = game.getAction().moveTo(zone, c, sa);
+                            c = game.getAction().moveTo(zone, c, sa, moveParams);
                         }
                         if (!origin.equals(c.getZone().getZoneType())) {
                             table.put(origin, c.getZone().getZoneType(), c);
@@ -138,6 +142,7 @@ public class DigMultipleEffect extends SpellAbilityEffect {
                     if (sa.hasParam("ExileFaceDown")) {
                         c.turnFaceDown(true);
                     }
+                    game.getAction().fireDeferredZoneChangeEvents(moveParams);
                     if (sa.hasParam("Imprint")) {
                         host.addImprintedCard(c);
                     }

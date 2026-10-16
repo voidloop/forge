@@ -1201,12 +1201,14 @@ public class Player extends GameEntity implements Comparable<Player> {
 
         if (!library.isEmpty()) {
             Card c;
+            final int drawPosition;
 
             if (hasKeyword("You draw cards from the bottom of your library instead of the top of your library.")) {
-                c = library.get(library.size() - 1);
+                drawPosition = library.size() - 1;
             } else {
-                c = library.get(0);
+                drawPosition = 0;
             }
+            c = library.get(drawPosition);
 
             List<Player> pList = Lists.newArrayList();
             for (Player p : getAllOtherPlayers()) {
@@ -1215,7 +1217,16 @@ public class Player extends GameEntity implements Comparable<Player> {
                 }
             }
 
-            c = game.getAction().moveTo(hand, c, cause, params);
+            // Only this native selection establishes an ordered draw. Keep the
+            // selected card with the position so recursive replacement moves
+            // cannot publish its context for a different card.
+            final Map<AbilityKey, Object> drawParams = AbilityKey.newMap();
+            if (params != null) {
+                drawParams.putAll(params);
+            }
+            drawParams.put(AbilityKey.DrawCard, c);
+            drawParams.put(AbilityKey.DrawPosition, drawPosition);
+            c = game.getAction().moveTo(hand, c, cause, drawParams);
             drawn.add(c);
 
             // CR 121.6c additional actions can't be performed when draw gets replaced

@@ -71,6 +71,10 @@ public class StaticEffects {
         return staticEffects.values();
     }
 
+    public final StaticEffect getAppliedEffect(final StaticAbility ability) {
+        return staticEffects.get(ability);
+    }
+
     public boolean removeStaticEffect(final StaticAbility staticAbility, final StaticAbilityLayer layer, final boolean removeFull) {
         final StaticEffect currentEffect;
         if (removeFull) {

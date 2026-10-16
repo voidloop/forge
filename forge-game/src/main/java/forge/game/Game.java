@@ -90,6 +90,7 @@ public class Game {
     public final CostPaymentStack costPaymentStack = new CostPaymentStack();
     private final PhaseHandler phaseHandler;
     private final StaticEffects staticEffects = new StaticEffects();
+    private final Map<Long, ResolvedContinuousEffect> resolvedContinuousEffects = new LinkedHashMap<>();
     private final TriggerHandler triggerHandler = new TriggerHandler(this);
     private final ReplacementHandler replacementHandler = new ReplacementHandler(this);
     private final EventBus events = new EventBus("game events");
@@ -460,6 +461,19 @@ public class Game {
 
     public final StaticEffects getStaticEffects() {
         return staticEffects;
+    }
+    public List<ResolvedContinuousEffect> getResolvedContinuousEffects() {
+        return List.copyOf(resolvedContinuousEffects.values());
+    }
+    public void addResolvedContinuousEffect(final SpellAbility ability, final long timestamp, final GameEntity affected) {
+        resolvedContinuousEffects.computeIfAbsent(timestamp, t -> new ResolvedContinuousEffect(ability, t))
+                .addAffected(affected);
+    }
+    public void removeResolvedContinuousEffect(final long timestamp, final GameEntity affected) {
+        final ResolvedContinuousEffect effect = resolvedContinuousEffects.get(timestamp);
+        if (effect != null && effect.removeAffected(affected)) {
+            resolvedContinuousEffects.remove(timestamp);
+        }
     }
     public final ReplacementHandler getReplacementHandler() {
         return replacementHandler;
