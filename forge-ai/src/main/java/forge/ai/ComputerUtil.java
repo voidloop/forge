@@ -691,12 +691,12 @@ public class ComputerUtil {
             typeList.remove(activate);
         }
 
-        if (typeList.size() < amount) {
-            return null;
-        }
-
         if (sa.isKeyword(Keyword.STATION)) {
             typeList.removeAll(CardLists.filter(typeList, c -> c.getNetPower() <= 0));
+        }
+
+        if (typeList.size() < amount) {
+            return null;
         }
 
         CardLists.sortByPowerAsc(typeList);
@@ -3063,6 +3063,10 @@ public class ComputerUtil {
                 } else if (ab.getApi() == ApiType.Mana && "ManaRitual".equals(ab.getParam("AILogic"))) {
                     // TODO Mana Ritual cards are too complex for the AI to consider casting through a spell effect and will
                     // lead to a stack overflow. Consider improving.
+                    continue;
+                } else if ("ReplaySpell".equals(ab.getParam("AILogic"))) {
+                    // Evaluating a replay effect (e.g. Flashback, Recoup) as the spell to replay would choose
+                    // its own target the same way, recursing until the stack overflows.
                     continue;
                 }
                 SpellAbility abTest = withoutPayingManaCost ? ab.copyWithNoManaCost() : ab.copy();
