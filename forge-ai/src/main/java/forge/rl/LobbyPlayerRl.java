@@ -6,33 +6,17 @@ import forge.game.player.IGameEntitiesFactory;
 import forge.game.player.Player;
 import forge.game.player.PlayerController;
 
-/**
- * LobbyPlayer for the RL agent.
- *
- * The decision callback creates the independent agent controller. The legacy
- * action callback retains the M9 controller until its session is replaced.
- */
+/** Creates the independent agent controller for a game or controlled player. */
 public class LobbyPlayerRl extends LobbyPlayer implements IGameEntitiesFactory {
-
-    private final IDecisionCallback callback;
-    private final IPlayerDecisionCallback decisionCallback;
-
-    public LobbyPlayerRl(String name, IDecisionCallback callback) {
-        super(name);
-        this.callback = callback;
-        this.decisionCallback = null;
-    }
+    private final IPlayerDecisionCallback callback;
 
     public LobbyPlayerRl(String name, IPlayerDecisionCallback callback) {
         super(name);
-        this.callback = null;
-        this.decisionCallback = java.util.Objects.requireNonNull(callback);
+        this.callback = java.util.Objects.requireNonNull(callback);
     }
 
     private PlayerController createController(Game game, Player player) {
-        return decisionCallback != null
-                ? new PlayerControllerRl(game, player, this, decisionCallback)
-                : new PlayerControllerM9(game, player, this, callback);
+        return new PlayerControllerRl(game, player, this, callback);
     }
 
     @Override

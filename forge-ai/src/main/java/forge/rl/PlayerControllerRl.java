@@ -571,21 +571,6 @@ public class PlayerControllerRl extends PlayerController {
     public int getRawCandidateCount() {
         return rawCandidateCount;
     }
-    public int getFilteredCandidateCount() {
-        return rawCandidateCount;
-    }
-    public int getInvalidTargetCandidateCount() {
-        return 0;
-    }
-    public int getInvalidModeCandidateCount() {
-        return 0;
-    }
-    public int getManaCandidateFilteredCount() {
-        return 0;
-    }
-    public int getAutomaticPassCount() {
-        return 0;
-    }
     public int getChosenActionCount() {
         return chosenActionCount;
     }
