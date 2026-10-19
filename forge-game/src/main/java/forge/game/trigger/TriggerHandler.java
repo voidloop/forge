@@ -59,6 +59,11 @@ public class TriggerHandler {
         delayedTriggers.add(trig);
     }
 
+    /** Allows observers to retain pending effects without changing their registration. */
+    public final List<Trigger> getDelayedTriggers() {
+        return Collections.unmodifiableList(delayedTriggers);
+    }
+
     public final void clearDelayedTrigger() {
         delayedTriggers.clear();
     }
