@@ -127,6 +127,69 @@ public class ObservationFacadeTest {
     }
 
     @Test
+    public void decisionFlushesPendingMovesBeforeBindingOptions() {
+        Position position = position();
+        Card card = add(position, "Bitter Triumph", position.observer(), ZoneType.Hand);
+        position.view().observe(new Events());
+        int previous = position.view().alias(card.getId());
+        // A cancelled cast can return to hand before its deferred move is delivered.
+        card.setZone(position.game().getStackZone());
+        position.game().fireEvent(new GameEventCardChangeZone(card,
+                position.observer().getZone(ZoneType.Hand), position.game().getStackZone()));
+        card.setZone(position.observer().getZone(ZoneType.Hand));
+        var ability = card.getSpellAbilities().get(0);
+        ability.setActivatingPlayer(position.observer());
+        var request = new NativeDecision("priority", position.observer(), null, "Choose",
+                List.of(card, ability), 1, 1, false, false, false, false, null);
+        var decision = position.view().decision(request);
+        var cards = (List<?>) position.view().snapshot().get("cards");
+        assertEquals(cards.size(), 1);
+        Object current = ((Map<?, ?>) cards.get(0)).get("id");
+        assertNotEquals(current, previous);
+        for (Object option : (List<?>) decision.get("options")) {
+            var reference = (Map<?, ?>) ((Map<?, ?>) option).get("object");
+            assertEquals(reference.get("id"), current);
+        }
+    }
+
+    @Test
+    public void permittedLibraryOptionsHaveUnorderedPrivateCardFacts() {
+        Position position = position();
+        Card first = add(position, "Grizzly Bears", position.opponent(), ZoneType.Library);
+        Card second = add(position, "Serra Angel", position.opponent(), ZoneType.Library);
+        Card hidden = add(position, "Black Lotus", position.opponent(), ZoneType.Library);
+        assertEquals(position.view().snapshot().get("cards"), List.of());
+        first.addMayLookTemp(position.observer());
+        second.addMayLookTemp(position.observer());
+        var request = new NativeDecision("effect_cards", position.observer(), null, "Choose",
+                List.of(first, second, hidden), 1, 1, false, false, false, false, null);
+        var decision = position.view().decision(request);
+        var snapshot = position.view().snapshot();
+        var cards = (List<?>) snapshot.get("cards");
+        assertEquals(cards.size(), 2);
+        Set<Object> ids = new HashSet<>();
+        for (Object value : cards) {
+            var facts = (Map<?, ?>) value;
+            ids.add(facts.get("id"));
+            assertEquals(facts.get("zone"), "library");
+            assertEquals(facts.get("scope"), "observer_private");
+            assertFalse(facts.containsKey("library_position"));
+        }
+        var options = (List<?>) decision.get("options");
+        for (Object option : options.subList(0, 2)) {
+            var reference = (Map<?, ?>) ((Map<?, ?>) option).get("object");
+            assertTrue(ids.contains(reference.get("id")));
+        }
+        assertNull(((Map<?, ?>) options.get(2)).get("object"));
+        position.opponent().getZone(ZoneType.Library).remove(first);
+        position.opponent().getZone(ZoneType.Library).add(first);
+        assertEquals(position.view().snapshot(), snapshot);
+        first.removeMayLookTemp(position.observer());
+        second.removeMayLookTemp(position.observer());
+        assertEquals(position.view().snapshot().get("cards"), List.of());
+    }
+
+    @Test
     public void hiddenExitWaitsForTheFinalNativePermissions() {
         Position position = position();
         Card card = add(position, "Serra Angel", position.opponent(), ZoneType.Library);

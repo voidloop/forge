@@ -41,7 +41,7 @@ final class CardReader {
         String name = identity == null ? null : identity.getName();
         Boolean faceDown = battlefield || zone == ZoneType.Stack || zone == ZoneType.Exile ? down : null;
         var result = data("id", view.alias(card.getId()), "card_name", name,
-                "scope", zone == ZoneType.Hand || down && name != null ? "observer_private" : "public",
+                "scope", zone == ZoneType.Hand || zone == ZoneType.Library || down && name != null ? "observer_private" : "public",
                 "zone", zone == null ? "unknown" : zone.name().toLowerCase(Locale.ROOT),
                 "owner", view.side(card.getOwner()), "controller", view.side(card.getController()),
                 "is_token", card.isToken(), "is_commander", card.isCommander(), "is_face_down", faceDown,

@@ -121,6 +121,7 @@ public final class ObservationFacade {
         if (request.getChooser() != observer && request.getChooser().getControllingPlayer() != observer) {
             throw new IllegalStateException("Decision routed to an unauthorized observer");
         }
+        if (events != null) { events.flush(); }
         Map<String, Object> context = new LinkedHashMap<>();
         request.getContext().forEach((key, value) -> context.put(key, text(value)));
         return data("kind", request.getKind(), "prompt", request.getPrompt(),

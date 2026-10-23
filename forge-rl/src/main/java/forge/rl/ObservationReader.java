@@ -23,17 +23,17 @@ final class ObservationReader {
         List<Player> players = new ArrayList<>(game.getRegisteredPlayers());
         int start = players.indexOf(game.getStartingPlayer());
         List<Object> playerFacts = new ArrayList<>();
-        List<Object> cardFacts = new ArrayList<>();
+        List<Map<String, Object>> cardFacts = new ArrayList<>();
         List<Object> zones = new ArrayList<>();
-        List<Object> known = new ArrayList<>();
+        List<Map<String, Object>> known = new ArrayList<>();
         List<Object> commanderDamage = new ArrayList<>();
         Map<Integer, Long> timestamps = new HashMap<>();
         for (int i = 0; i < players.size(); i++) {
             Player player = players.get(i);
             playerFacts.add(PlayerReader.read(player, view, start < 0 ? i : (i - start + players.size()) % players.size()));
-            for (ZoneType zone : List.of(ZoneType.Hand, ZoneType.Battlefield, ZoneType.Graveyard, ZoneType.Exile, ZoneType.Stack, ZoneType.Command)) {
+            for (ZoneType zone : List.of(ZoneType.Hand, ZoneType.Library, ZoneType.Battlefield, ZoneType.Graveyard, ZoneType.Exile, ZoneType.Stack, ZoneType.Command)) {
                 for (Card card : player.getCardsIn(zone, false)) {
-                    if (zone == ZoneType.Hand && !view.canSee(card.getView())) { continue; }
+                    if ((zone == ZoneType.Hand || zone == ZoneType.Library) && !view.canSee(card.getView())) { continue; }
                     if (zone == ZoneType.Command && !card.isEmblem() && !card.isCommander()) { continue; }
                     Long previous = timestamps.putIfAbsent(card.getId(), card.getGameTimestamp());
                     if (previous != null) {
@@ -68,6 +68,9 @@ final class ObservationReader {
                 : game.getOutcome().getWinningLobbyPlayer().equals(observer.getLobbyPlayer()) ? "win" : "loss";
         List<String> deck = game.getAge() == GameStage.BeforeMulligan
                 ? observer.getRegisteredPlayer().getDeck().getMain().toFlatList().stream().map(card -> card.getName()).toList() : null;
+        // A native look grant reveals identities, not their physical library order.
+        cardFacts.sort(Comparator.comparingInt(card -> (Integer) card.get("id")));
+        known.sort(Comparator.comparingInt(card -> (Integer) card.get("id")));
         return data("game", data("active_player", view.side(phase.getPlayerTurn()),
                 "starting_player", view.side(game.getStartingPlayer()), "native_format", game.getRules().getGameType().name(),
                 "starting_life", observer.getStartingLife(), "day_time", game.getDayTime(),
