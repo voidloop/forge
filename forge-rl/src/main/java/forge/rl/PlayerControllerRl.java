@@ -30,10 +30,10 @@ import forge.game.zone.PlayerZone;
 import forge.game.zone.ZoneType;
 import forge.item.PaperCard;
 import forge.util.ITriggerEvent;
-import forge.util.MessageUtil;
 import forge.util.collect.FCollectionView;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import forge.util.MessageUtil;
 
 import java.util.Collection;
 import java.util.List;
@@ -49,6 +49,7 @@ public class PlayerControllerRl extends PlayerController {
         return failure;
     }
     private final Player observer;
+    private final ObservationFacade observation;
     private final java.util.Deque<SpellAbility> activeActions = new java.util.ArrayDeque<>();
     private int rawCandidateCount;
     private int chosenActionCount;
@@ -68,17 +69,25 @@ public class PlayerControllerRl extends PlayerController {
         super(game, player, lobby);
         this.callback = callback;
         this.observer = observer;
+        this.observation = player != observer && observer.getController() instanceof PlayerControllerRl controller
+                ? controller.getObservation() : new ObservationFacade(observer);
         getFullControl().add(FullControlFlag.ChooseCostOrder);
         getFullControl().add(FullControlFlag.ChooseCostReductionOrderAndVariableAmount);
         getFullControl().add(FullControlFlag.ChooseManaPoolShard);
         getFullControl().add(FullControlFlag.NoPaymentFromManaAbility);
     }
 
+    public ObservationFacade getObservation() { return observation; }
+
     private List<Integer> answer(NativeDecision request) {
         try {
             if (failure != null) { throw failure; }
+            if (player != observer && player.getControllingPlayer() != observer) {
+                throw new IllegalStateException("Decision routed to an unauthorized observer");
+            }
             requests++;
-            List<Integer> result = callback.choose(request);
+            callback.observe(observation);
+            List<Integer> result = callback.choose(observation.decision(request));
             request.validateAnswer(result);
             return result;
         } catch (RuntimeException error) {
@@ -298,7 +307,8 @@ public class PlayerControllerRl extends PlayerController {
     @Override
     public void tempShowCards(Iterable<Card> cards) {
         for (Card card : cards) {
-            for (Player viewer : player == observer ? List.of(player) : List.of(player, observer)) {
+            for (Player viewer : player != observer && player.getControllingPlayer() == observer
+                    ? List.of(player, observer) : List.of(player)) {
                 if (!card.mayPlayerLook(viewer)) {
                     card.addMayLookTemp(viewer);
                     temporaryViews.computeIfAbsent(viewer, ignored -> new CardCollection()).add(card);
@@ -417,13 +427,13 @@ public class PlayerControllerRl extends PlayerController {
             if (ability.isDividedAsYouChoose()) {
                 int amount;
                 if (divisions != null) {
-                    amount = one("target_division", ability, "Choose allocation for " + target, divisions);
+                    amount = one("target_division", ability, "Choose allocation for " + observation.text(target), divisions);
                     divisions.remove(Integer.valueOf(amount));
                 } else {
                     int required = Math.max(0, min - ability.getTargets().size());
                     int upper = ability.getStillToDivide() - required;
                     int lower = ability.getTargets().size() == max ? upper : 1;
-                    amount = number(ability, "Allocate to " + target, lower, upper, false);
+                    amount = number(ability, "Allocate to " + observation.text(target), lower, upper, false);
                 }
                 ability.addDividedAllocation(target, amount);
             }
@@ -520,38 +530,38 @@ public class PlayerControllerRl extends PlayerController {
 
     @Override
     public void reveal(CardCollectionView cards, ZoneType zone, Player owner, String message, boolean suffix) {
+        if (player != observer && player.getControllingPlayer() != observer) { return; }
         for (Card card : cards) {
-            String name = card.getName();
-            if (card.isFaceDown()) {
-                final CardView view = card.getView();
-                if (!view.canFaceDownBeShownTo(observer.getView()) || view.getAlternateState() == null) { continue; }
-                name = view.getAlternateState().getOracleName();
-            }
-            if (!name.isEmpty()) {
-                callback.cardsRevealed(card.getOwner() == observer, zone.name(), List.of(card.getId()), List.of(name), List.of(card.isToken()));
+            String name = observation.disclosedName(card.getView());
+            if (name != null && !name.isEmpty()) {
+                callback.cardsRevealed(card.getOwner() == observer, zone.name(), List.of(observation.alias(card.getId())), List.of(name), List.of(card.isToken()));
             }
         }
-        if (zone == ZoneType.Library) { publishLibraryTop(owner, cards::contains); }
     }
 
     @Override
     public void reveal(List<CardView> cards, ZoneType zone, PlayerView owner, String message, boolean suffix) {
+        if (player != observer && player.getControllingPlayer() != observer) { return; }
         for (CardView card : cards) {
-            if (card.isFaceDown() && !card.canFaceDownBeShownTo(observer.getView())) { continue; }
-            callback.cardsRevealed(card.getOwner() == observer.getView(), zone.name(),
-                    List.of(card.getId()), List.of(card.getName()), List.of(card.isToken()));
+            final String name = observation.disclosedName(card);
+            if (name != null && !name.isEmpty()) {
+                callback.cardsRevealed(card.getOwner().getId() == observer.getId(), zone.name(),
+                        List.of(observation.alias(card.getId())), List.of(name), List.of(card.isToken()));
+            }
         }
     }
 
-    private void publishLibraryTop(Player owner, Predicate<Card> disclosed) {
+    private void publishLibraryTop(CardCollectionView cards) {
+        if (cards.isEmpty()) { return; }
         List<Integer> ids = new java.util.ArrayList<>();
         List<String> names = new java.util.ArrayList<>();
         List<Boolean> tokens = new java.util.ArrayList<>();
-        for (Card card : owner.getCardsIn(ZoneType.Library)) {
-            if (!disclosed.test(card) || !card.getView().canFaceDownBeShownTo(observer.getView())) { break; }
-            ids.add(card.getId()); names.add(card.getName()); tokens.add(card.isToken());
+        for (Card card : cards) {
+            final String name = observation.visibleName(card.getView());
+            if (name == null) { break; }
+            ids.add(observation.alias(card.getId())); names.add(name); tokens.add(card.isToken());
         }
-        callback.libraryTopVisible(owner == observer, ids, names, tokens);
+        callback.libraryTopVisible(cards.getFirst().getOwner() == observer, ids, names, tokens);
     }
 
     @Override
@@ -682,11 +692,11 @@ public class PlayerControllerRl extends PlayerController {
                 lethal &= assigned.getOrDefault(card, 0) >= card.getExcessDamageValue(source.hasKeyword(Keyword.DEATHTOUCH));
             }
             if (left > 0 && toDefender && (divide || lethal)) { options.add(defender); }
-            Object chosen = one("combat_damage", null, "Assign " + left + " remaining damage from " + source, options);
+            Object chosen = one("combat_damage", null, "Assign " + left + " remaining damage from " + observation.text(source), options);
             if ("finish".equals(chosen)) { return assigned; }
             if ("skip".equals(chosen)) { return null; }
             if ("reset".equals(chosen)) { assigned.clear(); left = damage; continue; }
-            int amount = number(null, "Damage to " + chosen, 1, left, false);
+            int amount = number(null, "Damage to " + observation.text(chosen), 1, left, false);
             assigned.merge(chosen == defender ? null : (Card) chosen, amount, Integer::sum);
             left -= amount;
         }
@@ -699,7 +709,7 @@ public class PlayerControllerRl extends PlayerController {
             List<GameEntity> candidates = affected.keySet().stream()
                     .filter(e -> result.getOrDefault(e, 0) < affected.get(e)).toList();
             GameEntity target = one("shield_target", null, "Choose a shield recipient", candidates);
-            int amount = number(null, "Shield amount for " + target, 1,
+            int amount = number(null, "Shield amount for " + observation.text(target), 1,
                     Math.min(remaining, affected.get(target) - result.getOrDefault(target, 0)), false);
             result.merge(target, amount, Integer::sum);
             remaining -= amount;
@@ -896,10 +906,7 @@ public class PlayerControllerRl extends PlayerController {
     }
     @Override
     public void notifyOfValue(SpellAbility source, GameObject related, String value) {
-        String message = MessageUtil.formatNotificationMessage(source, player, related, value);
-        String title = source == null || source.getHostCard() == null || source.isManaAbility()
-                ? "" : source.getHostCard().getView().toString();
-        callback.valueNotified(player, source, related, String.valueOf(value), message, title);
+        // Scalar-choice memory is outside the current observation contract.
     }
     private ImmutablePair<CardCollection, CardCollection> arrangeLibrary(String kind, CardCollection topN, ZoneType otherZone) {
         Map<String, Object> context = new java.util.LinkedHashMap<>();
@@ -910,6 +917,7 @@ public class PlayerControllerRl extends PlayerController {
         context.put("OrderDirection", otherZone == ZoneType.Library ? "top_first" : "bottom_first");
         try {
             tempShowCards(topN);
+            publishLibraryTop(topN);
             CardCollection moved = new CardCollection(select(kind + (otherZone == ZoneType.Library ? "_bottom" : "_graveyard"),
                     null, otherZone == ZoneType.Library ? "Choose cards for the bottom, in final top-to-bottom order"
                             : "Choose cards for the graveyard, bottom first",
@@ -923,7 +931,13 @@ public class PlayerControllerRl extends PlayerController {
                         new java.util.ArrayList<>(kept), kept.size(), kept.size(), false, false, true, null, context));
             }
             return ImmutablePair.of(kept, moved);
-        } finally { endTempShowCards(); }
+        } finally {
+            if (!topN.isEmpty()) {
+                callback.libraryTopVisible(topN.getFirst().getOwner() == observer,
+                        List.of(), List.of(), List.of());
+            }
+            endTempShowCards();
+        }
     }
 
     @Override
@@ -936,7 +950,8 @@ public class PlayerControllerRl extends PlayerController {
     }
     @Override
     public boolean willPutCardOnTop(Card c) {
-        return one("put_on_top", null, "Put " + c + " on top?", List.of(true, false));
+        return select("put_on_top", null, "Put this card on top?", List.of(true, false),
+                1, 1, false, false, false, null, Map.of("Card", c)).get(0);
     }
     @Override
     public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destination, SpellAbility source) {
@@ -1084,7 +1099,13 @@ public class PlayerControllerRl extends PlayerController {
     }
     @Override
     public boolean chooseCardsPile(SpellAbility sa, CardCollectionView pile1, CardCollectionView pile2, String faceUp) {
-        return select("pile", sa, "Choose a pile", List.of(true, false), 1, 1, false, false, false, null, Map.of("Pile1", pile1, "Pile2", pile2, "FaceUp", faceUp)).get(0);
+        try {
+            if ("False".equals(faceUp)) { tempShowCards(pile1); }
+            if (!"True".equals(faceUp)) { tempShowCards(pile2); }
+            return select("pile", sa, "Choose a pile", List.of(true, false), 1, 1,
+                    false, false, false, null,
+                    Map.of("Pile1", pile1, "Pile2", pile2, "FaceUp", faceUp)).get(0);
+        } finally { endTempShowCards(); }
     }
     @Override
     public CounterType chooseCounterType(List<CounterType> options, SpellAbility sa, String prompt, Map<String, Object> params) {
@@ -1112,7 +1133,6 @@ public class PlayerControllerRl extends PlayerController {
     }
     @Override
     public void revealAnte(String message, Multimap<Player, PaperCard> removedAnteCards) {
-        callback.valueNotified(player, null, null, removedAnteCards.toString(), message, "Ante");
     }
     @Override
     public void revealAISkipCards(String message, Map<Player, Map<DeckSection, List<? extends PaperCard>>> deckCards) {  }

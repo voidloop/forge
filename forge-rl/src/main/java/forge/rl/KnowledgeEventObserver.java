@@ -2,10 +2,8 @@ package forge.rl;
 
 import com.google.common.eventbus.Subscribe;
 import com.google.common.collect.Multimap;
-import forge.card.CardStateName;
 import forge.game.card.Card;
 import forge.game.card.CardView;
-import forge.game.card.CardView.CardStateView;
 import forge.game.event.GameEventAttackersDeclared;
 import forge.game.event.GameEventBlockersDeclared;
 import forge.game.event.GameEventCardChangeZone;
@@ -22,22 +20,62 @@ import forge.game.zone.ZoneType;
 import forge.game.zone.ZoneView;
 
 import java.util.Map;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Sends only facts visible to the RL player across the Java/Python boundary. */
 public final class KnowledgeEventObserver {
     private final Player observer;
-    private final IKnowledgeEventCallback callback;
-    private final Set<Integer> knownOpponentCards = new HashSet<>();
+    private final ObservationFacade view;
+    private IKnowledgeEventCallback callback;
+    private record PendingMove(GameEventCardChangeZone event, String sourceName) { }
+    private final List<PendingMove> pendingMoves = new ArrayList<>();
 
-    public KnowledgeEventObserver(Player observer, IKnowledgeEventCallback callback) {
+    KnowledgeEventObserver(Player observer, ObservationFacade view, IKnowledgeEventCallback callback) {
         this.observer = observer;
+        this.view = view;
         this.callback = callback;
     }
 
     @Subscribe
     public void onCardChangeZone(GameEventCardChangeZone event) {
+        flush();
+        final CardView card = event.card();
+        if (card == null || card.getOwner() == null) { return; }
+        final ZoneType from = zoneType(event.from());
+        final String sourceName = card.getZone() == from && canIdentify(card)
+                ? visibleName(card) : null;
+        final PendingMove move = new PendingMove(event, sourceName);
+        if (isPublic(zoneType(event.to())) && from != null && from.isHidden()) {
+            // Forge applies face-down state and look grants after this event.
+            pendingMoves.add(move);
+            return;
+        }
+        emitCardChangeZone(move);
+    }
+
+    /** Deliver moves after Forge has applied their final visibility. */
+    public void flush() {
+        final List<PendingMove> pending = new ArrayList<>(pendingMoves);
+        pendingMoves.clear();
+        pending.forEach(this::emitCardChangeZone);
+    }
+
+    void close() {
+        pendingMoves.clear();
+        callback = null;
+    }
+
+    private boolean canIdentify(CardView card) {
+        return view.canIdentify(card);
+    }
+
+    private String visibleName(CardView card) {
+        return view.visibleName(card);
+    }
+
+    private void emitCardChangeZone(PendingMove move) {
+        final GameEventCardChangeZone event = move.event();
         final CardView card = event.card();
         if (card == null || card.getOwner() == null) {
             return;
@@ -49,42 +87,35 @@ public final class KnowledgeEventObserver {
             final Card effect = observer.getGame().findById(card.getId());
             if (effect != null && effect.isImmutable() && !effect.isEmblem()) {
                 final Card source = effect.getEffectSource();
-                if (source != null
-                        && source.getView().canBeShownTo(observer.getView())
-                        && source.getView().canFaceDownBeShownTo(observer.getView())) {
-                    callback.publicEffectCreated(effect);
+                if (source != null && canIdentify(source.getView())) {
+                    callback.publicEffectCreated(ObservationReader.commandEffect(effect, view));
                 }
             }
+            return;
         }
-        final boolean publicMove = isPublic(from) || isPublic(to);
-        // Remembering a card does not identify a later hidden move (e.g. a draw
-        // after shuffling). History must not link that move to the remembered card.
-        final boolean identifiedMove = ownerIsObserver || publicMove;
+        final Card current = observer.getGame().findById(card.getId());
+        final CardView destination = current == null ? null : current.getView();
+        final String name = destination != null && destination.getZone() == to
+                && canIdentify(destination) ? visibleName(destination) : move.sourceName();
+        final boolean identifiedMove = name != null && !name.isEmpty();
+        final boolean trackedMove = identifiedMove || isPublic(from);
         callback.publicEvent(
-                "zone_change", ownerIsObserver, identifiedMove ? card.getId() : null,
+                "zone_change", ownerIsObserver, trackedMove ? view.alias(card.getId()) : null,
                 zoneName(from), zoneName(to), null);
-        if (!ownerIsObserver && !publicMove) {
-            callback.anonymousZoneChange(false, zoneName(from), zoneName(to));
-            return;
-        }
-        if (!card.canFaceDownBeShownTo(observer.getView())) {
-            return;
-        }
-        if (!ownerIsObserver) {
-            knownOpponentCards.add(card.getId());
-        }
-        // A face-down card the observer may look at is identified by its face-up state.
-        final CardStateView faceUp = card.isFaceDown() ? card.getAlternateState() : null;
-        if (card.isFaceDown() && faceUp == null) {
-            return;
-        }
-        final String name = faceUp == null ? printedName(card) : faceUp.getOracleName();
-        // The game card may already be face down while the event view is not yet.
-        if (name.isEmpty()) {
+        if (!identifiedMove) {
+            if (from != null && from.isHidden()) {
+                view.conceal(card.getId());
+            }
+            if (trackedMove) {
+                callback.cardZoneChanged(view.alias(card.getId()), null, ownerIsObserver,
+                        card.isToken(), zoneName(from), zoneName(to));
+            } else {
+                callback.anonymousZoneChange(ownerIsObserver, zoneName(from), zoneName(to));
+            }
             return;
         }
         callback.cardZoneChanged(
-                card.getId(), name,
+                view.alias(card.getId()), name,
                 ownerIsObserver, card.isToken(),
                 zoneName(from), zoneName(to));
     }
@@ -94,12 +125,13 @@ public final class KnowledgeEventObserver {
         // Immutable effects can disappear without a GameEventCardChangeZone.
         if (event.zoneType() == ZoneType.Command
                 && event.mode() == EventValueChangeType.Removed && event.card() != null) {
-            callback.publicEffectRemoved(event.card().getId());
+            callback.publicEffectRemoved(view.alias(event.card().getId()));
         }
     }
 
     @Subscribe
     public void onSpellAbilityCast(GameEventSpellAbilityCast event) {
+        flush();
         final CardView card = event.si() == null ? null : event.si().getSourceCard();
         final PlayerView player = event.si() == null ? null : event.si().getActivatingPlayer();
         final String kind = event.sa().isSpell() ? "cast"
@@ -109,6 +141,7 @@ public final class KnowledgeEventObserver {
 
     @Subscribe
     public void onLandPlayed(GameEventLandPlayed event) {
+        flush();
         callback.publicEvent(
                 "play_land", isObserver(event.player()), referenceId(event.land()),
                 null, "Battlefield", null);
@@ -116,6 +149,7 @@ public final class KnowledgeEventObserver {
 
     @Subscribe
     public void onAttackersDeclared(GameEventAttackersDeclared event) {
+        flush();
         for (CardView attacker : event.attackersMap().values()) {
             callback.publicEvent(
                     "attack", isObserver(event.player()), referenceId(attacker),
@@ -125,6 +159,7 @@ public final class KnowledgeEventObserver {
 
     @Subscribe
     public void onBlockersDeclared(GameEventBlockersDeclared event) {
+        flush();
         for (Map.Entry<?, Multimap<CardView, CardView>> entry
                 : event.blockers().entrySet()) {
             for (CardView blocker : entry.getValue().values()) {
@@ -137,11 +172,13 @@ public final class KnowledgeEventObserver {
 
     @Subscribe
     public void onMulligan(GameEventMulligan event) {
+        flush();
         callback.publicEvent("mulligan", isObserver(event.player()), null, null, null, null);
     }
 
     @Subscribe
     public void onTurnEnded(GameEventTurnEnded event) {
+        flush();
         for (Player player : observer.getGame().getPlayers()) {
             callback.publicEvent(
                     "mana_left_open", player.getId() == observer.getId(), null,
@@ -149,23 +186,14 @@ public final class KnowledgeEventObserver {
         }
     }
 
-    /**
-     * The card's name in its destination zone: the event view may still show the state it
-     * left with, e.g. a transformed back face returning to hand. A Room permanent only has
-     * its unlocked doors' name (CR 709.5), so it is reported by its printed card's name.
-     */
-    private String printedName(CardView view) {
-        final Card card = observer.getGame().findById(view.getId());
-        if (card == null) {
-            return view.getOracleName();
-        }
-        return card.isRoom() ? card.getName(card.getState(CardStateName.Original)) : card.getName();
-    }
-
     @Subscribe
     public void onShuffle(GameEventShuffle event) {
+        flush();
         if (event.player() != null) {
             callback.playerShuffled(event.player().getId() == observer.getId());
+            for (Card card : observer.getGame().getPlayer(event.player()).getCardsIn(ZoneType.Library)) {
+                view.conceal(card.getId());
+            }
         }
     }
 
@@ -174,8 +202,7 @@ public final class KnowledgeEventObserver {
     }
 
     private static boolean isPublic(ZoneType zone) {
-        return zone == ZoneType.Battlefield || zone == ZoneType.Graveyard
-                || zone == ZoneType.Exile || zone == ZoneType.Stack;
+        return zone != null && zone.isKnown();
     }
 
     private static String zoneName(ZoneType zone) {
@@ -187,7 +214,7 @@ public final class KnowledgeEventObserver {
     }
 
     private Integer referenceId(CardView card) {
-        return card != null && card.canBeShownTo(observer.getView()) ? card.getId() : null;
+        return view.referenceId(card);
     }
 
     private static int untappedManaLands(Player player) {

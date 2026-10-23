@@ -21,7 +21,7 @@ public class LobbyPlayerRl extends LobbyPlayer implements IGameEntitiesFactory {
 
     @Override
     public PlayerController createMindSlaveController(Player master, Player slave) {
-        return createController(slave.getGame(), slave);
+        return new PlayerControllerRl(slave.getGame(), slave, this, callback, master);
     }
 
     @Override
