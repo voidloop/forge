@@ -59,9 +59,16 @@ public class PlayerControllerAi extends PlayerController {
     private boolean pilotsNonAggroDeck = false;
 
     public PlayerControllerAi(Game game, Player p, LobbyPlayer lp) {
-        super(game, p, lp);
+        this(game, p, lp, new AiController(p, game));
+    }
 
-        brains = new AiController(p, game);
+    /** Use a per-player AI extension while retaining the native controller workflow. */
+    protected PlayerControllerAi(Game game, Player p, LobbyPlayer lp, AiController ai) {
+        super(game, p, lp);
+        brains = Objects.requireNonNull(ai);
+        if (ai.getPlayer() != p || ai.getGame() != game) {
+            throw new IllegalArgumentException("AI must belong to this player and game");
+        }
     }
 
     public boolean pilotsNonAggroDeck() {
