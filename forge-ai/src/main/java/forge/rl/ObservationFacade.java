@@ -26,6 +26,11 @@ public final class ObservationFacade {
         this(observer, new SecureRandom());
     }
 
+    /** Reproducible aliases for private recording/replay setup, independent of game randomness. */
+    public ObservationFacade(Player observer, long aliasSeed) {
+        this(observer, new Random(aliasSeed));
+    }
+
     ObservationFacade(Player observer, Random random) {
         this.observer = Objects.requireNonNull(observer);
         this.random = random;

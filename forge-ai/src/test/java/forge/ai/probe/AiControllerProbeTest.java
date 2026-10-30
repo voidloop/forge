@@ -399,4 +399,30 @@ public class AiControllerProbeTest {
         assertEquals(payer.getLife(), 20);
     }
 
+
+    @Test
+    public void failedEvaluationIsObservableInsteadOfARecordedPass() throws Exception {
+        Game game = game(false);
+        Player player = game.getRegisteredPlayers().get(0);
+        Card source = add(game, player, "Grizzly Bears", ZoneType.Hand);
+        RuntimeException failure = new IllegalStateException("evaluation sentinel");
+        Spell spell = new SpellApiBased(ApiType.Draw, source, new Cost("0", false), null, Map.of("NumCards", "1")) {
+            @Override public ApiType getApi() {
+                if (Thread.currentThread().getName().equals("Game AI Eval")) { throw failure; }
+                return super.getApi();
+            }
+        };
+        spell.setActivatingPlayer(player);
+        AiController ai = new AiController(player, game) {
+            @Override protected void onEvaluationFailure(Exception cause) {
+                assertSame(cause.getCause(), failure);
+                throw new IllegalStateException("incomplete", cause);
+            }
+        };
+        var method = AiController.class.getDeclaredMethod("chooseSpellAbilityToPlayFromList", List.class, boolean.class);
+        method.setAccessible(true);
+        var actual = expectThrows(java.lang.reflect.InvocationTargetException.class,
+                () -> method.invoke(ai, new ArrayList<>(List.of(spell)), true));
+        assertEquals(actual.getCause().getMessage(), "incomplete");
+    }
 }

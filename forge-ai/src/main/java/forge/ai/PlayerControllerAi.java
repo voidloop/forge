@@ -1261,6 +1261,12 @@ public class PlayerControllerAi extends PlayerController {
         return ComputerUtilMana.payManaCost(toPay, ability, player, effect);
     }
 
+    /** Actual mana-source selection; affordability previews keep the static helper. */
+    public SpellAbility chooseManaAbilityForPayment(ManaCostBeingPaid cost, SpellAbility ability,
+            ManaCostShard shard, Collection<SpellAbility> options, boolean checkCosts) {
+        return ComputerUtilMana.chooseManaAbility(cost, ability, player, shard, options, checkCosts);
+    }
+
     /** Override to observe native cost answers without replacing the payment algorithm. */
     protected AiCostDecision createAiCostDecision(Player payer, SpellAbility ability, boolean effect, boolean payMana) {
         return new AiCostDecision(payer, ability, effect, payMana);
