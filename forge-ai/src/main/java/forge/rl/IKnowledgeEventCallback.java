@@ -22,8 +22,6 @@ public interface IKnowledgeEventCallback {
     void libraryPositionsKnown(boolean ownerIsObserver, List<Integer> instanceIds,
                                List<String> cardNames, List<Boolean> tokens, List<Integer> positions);
 
-    void publicEvent(String kind, boolean playerIsObserver, List<Integer> instanceIds);
-
     void publicChoice(boolean playerIsObserver, String sourceName, String text, int turn);
 
     void publicEffectCreated(Map<String, Object> effect);

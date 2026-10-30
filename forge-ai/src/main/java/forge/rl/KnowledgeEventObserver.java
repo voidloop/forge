@@ -6,13 +6,9 @@ import forge.game.card.Card;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCollectionView;
 import forge.game.card.CardView;
-import forge.game.combat.CombatUtil;
-import forge.game.event.GameEventAttackersDeclared;
-import forge.game.event.GameEventBlockersDeclared;
 import forge.game.event.GameEventCardChangeZone;
 import forge.game.event.GameEventCardModeChosen;
 import forge.game.event.GameEventLandPlayed;
-import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
 import forge.game.event.GameEventScry;
 import forge.game.event.GameEventSurveil;
@@ -28,7 +24,6 @@ import forge.game.zone.ZoneView;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Collection;
 import java.util.Objects;
 import java.util.ArrayDeque;
 import java.util.HashMap;
@@ -319,48 +314,11 @@ public final class KnowledgeEventObserver {
     @Subscribe
     public void onSpellAbilityCast(GameEventSpellAbilityCast event) {
         flush();
-        if (event.si() == null) { return; }
-        for (var item : observer.getGame().getStack()) {
-            if (item.getId() != event.si().getId()) { continue; }
-            var ability = item.getSpellAbility();
-            if (ability.isCopied() || ability.isTrigger()) { return; }
-            action(ability.isSpell() ? "cast" : "activate", event.si().getActivatingPlayer(),
-                    List.of(event.si().getSourceCard()));
-            return;
-        }
     }
 
     @Subscribe
     public void onLandPlayed(GameEventLandPlayed event) {
         flush();
-        action("play_land", event.player(), List.of(event.land()));
-    }
-
-    @Subscribe
-    public void onAttackersDeclared(GameEventAttackersDeclared event) {
-        flush();
-        if (event.attackersMap().isEmpty()
-                && !CombatUtil.canAttack(observer.getGame().getPlayer(event.player()))) { return; }
-        action("attack", event.player(), event.attackersMap().values());
-    }
-
-    @Subscribe
-    public void onBlockersDeclared(GameEventBlockersDeclared event) {
-        flush();
-        if (event.blockers().isEmpty()) { return; }
-        // Forge represents an unblocked attacker as an attacker -> itself entry.
-        var blockers = event.blockers().values().stream().flatMap(map -> map.entries().stream())
-                .filter(entry -> !entry.getKey().equals(entry.getValue())).map(Map.Entry::getValue).toList();
-        if (blockers.isEmpty() && (observer.getGame().getCombat() == null
-                || !CombatUtil.canBlock(observer.getGame().getPlayer(event.defendingPlayer()),
-                        observer.getGame().getCombat()))) { return; }
-        action("block", event.defendingPlayer(), blockers);
-    }
-
-    @Subscribe
-    public void onMulligan(GameEventMulligan event) {
-        flush();
-        action("mulligan", event.player(), List.of());
     }
 
     @Subscribe
@@ -393,10 +351,6 @@ public final class KnowledgeEventObserver {
         return player != null && player.getId() == observer.getId();
     }
 
-    private void action(String kind, PlayerView player, Collection<CardView> cards) {
-        callback.publicEvent(kind, isObserver(player), cards.stream().map(view::referenceId)
-                .filter(Objects::nonNull).distinct().sorted().toList());
-    }
     static boolean publicGroupedDigSource(Player chooser, SpellAbility source) {
         // shortcut: public, disjoint Creature/Land groups; qualify other DigMultiple forms separately.
         return source != null && source.getApi() == ApiType.DigMultiple

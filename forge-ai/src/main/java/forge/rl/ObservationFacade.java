@@ -101,8 +101,6 @@ public final class ObservationFacade {
         return result;
     }
 
-    public int turn() { return observer.getGame().getPhaseHandler().getTurn(); }
-
     /** Called only after the game worker stops; release the Python callback. */
     public void close() {
         if (events != null) { events.close(); events = null; }
