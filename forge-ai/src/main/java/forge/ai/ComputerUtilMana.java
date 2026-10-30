@@ -767,7 +767,7 @@ public class ComputerUtilMana {
                 sourcesForShards.values().removeIf(CardTraitPredicates.isHostCard(saPayment.getHostCard()));
             } else {
                 final CostPayment pay = new CostPayment(saPayment.getPayCosts(), saPayment);
-                if (!pay.payComputerCosts(new AiCostDecision(ai, saPayment, effect, true))) {
+                if (!pay.payComputerCosts(AiCostDecision.forPayment(ai, saPayment, effect, true))) {
                     saList.remove(saPayment);
                     continue;
                 }

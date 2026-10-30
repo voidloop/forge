@@ -4,6 +4,16 @@ import forge.ImageKeys;
 import forge.StaticData;
 import forge.CardStorageReader;
 import forge.ai.AiController;
+import forge.ai.AiCostDecision;
+import forge.ai.ComputerUtil;
+import forge.ai.ComputerUtilMana;
+import forge.game.ability.AbilityApiBased;
+import forge.game.cost.CostPayment;
+import forge.game.cost.CostPayLife;
+import forge.game.cost.CostSacrifice;
+import forge.game.cost.CostTap;
+import forge.game.cost.PaymentDecision;
+import forge.util.collect.FCollection;
 import forge.ai.AiPlayDecision;
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -249,4 +259,144 @@ public class AiControllerProbeTest {
         ((PlayerControllerAi) player.getController()).getAi().canPlayFromEffectAI(spell, false, true);
         assertEquals(probe.events, List.of("before"), "Failed cast scope must be closed");
     }
+    private record CostCall(Player payer, SpellAbility ability, boolean effect, boolean payMana) { }
+
+    private static final class CostRecordingController extends PlayerControllerAi {
+        private final List<CostCall> calls = new ArrayList<>();
+        private final List<Card> sacrificed = new ArrayList<>();
+        private final List<Integer> lifeBefore = new ArrayList<>();
+        private final List<Integer> lifeChoices = new ArrayList<>();
+        private int taps;
+        private RuntimeException failure;
+
+        private CostRecordingController(Game game, Player player) {
+            super(game, player, player.getLobbyPlayer());
+        }
+
+        @Override
+        protected AiCostDecision createAiCostDecision(Player payer, SpellAbility ability, boolean effect, boolean payMana) {
+            calls.add(new CostCall(payer, ability, effect, payMana));
+            return new AiCostDecision(payer, ability, effect, payMana) {
+                @Override public PaymentDecision visit(CostSacrifice cost) {
+                    PaymentDecision answer = super.visit(cost);
+                    if (answer != null) {
+                        for (Card card : answer.cards) {
+                            assertTrue(card.isInZone(ZoneType.Battlefield));
+                            sacrificed.add(card);
+                        }
+                    }
+                    return answer;
+                }
+
+                @Override public PaymentDecision visit(CostPayLife cost) {
+                    lifeBefore.add(payer.getLife());
+                    if (failure != null) { throw failure; }
+                    PaymentDecision answer = super.visit(cost);
+                    lifeChoices.add(answer == null ? null : answer.c);
+                    return answer;
+                }
+
+                @Override public PaymentDecision visit(CostTap cost) {
+                    PaymentDecision answer = super.visit(cost);
+                    taps++;
+                    return answer;
+                }
+            };
+        }
+    }
+
+    private CostRecordingController costController(Game game, Player player) {
+        CostRecordingController controller = new CostRecordingController(game, player);
+        player.dangerouslySetController(controller);
+        return controller;
+    }
+
+    private SpellAbility costAbility(Game game, Player player, String cost) {
+        Card source = add(game, player, "White Auracite", ZoneType.Battlefield);
+        SpellAbility ability = new AbilityApiBased(ApiType.Draw, source, new Cost(cost, true), null,
+                Map.of("NumCards", "0"));
+        ability.setActivatingPlayer(player);
+        return ability;
+    }
+
+    @DataProvider(name = "costPayments")
+    public Object[][] costPayments() {
+        return new Object[][] {{0, "stack"}, {1, "stack"}, {0, "chosen"}, {1, "chosen"},
+                {0, "noStack"}, {1, "noStack"}, {0, "prevent"}, {1, "prevent"},
+                {0, "factory"}, {1, "factory"}};
+    }
+
+    @Test(dataProvider = "costPayments")
+    public void costExtensionObservesNativeAnswersBeforePayment(int seat, String route) {
+        Game game = game(false);
+        Player player = game.getRegisteredPlayers().get(seat);
+        Player opponent = game.getRegisteredPlayers().get(1 - seat);
+        CostRecordingController controller = costController(game, player);
+        CostRecordingController peer = costController(game, opponent);
+        Card creature = add(game, player, "Weapons Vendor", ZoneType.Battlefield);
+        SpellAbility ability = costAbility(game, player, "Sac<1/Creature> PayLife<2>");
+        boolean paid = switch (route) {
+            case "stack" -> ComputerUtil.playStack(ability, player, game);
+            case "chosen" -> ComputerUtil.handlePlayingSpellAbility(player, ability, null);
+            case "noStack" -> ComputerUtil.playNoStack(player, ability, game, true);
+            case "prevent" -> controller.payCostToPreventEffect(ability.getPayCosts(), ability, false,
+                    new FCollection<>(List.of(player)));
+            case "factory" -> new CostPayment(ability.getPayCosts(), ability).payComputerCosts(
+                    controller.getCostDecisionMaker(player, ability, true, null));
+            default -> throw new AssertionError(route);
+        };
+        assertTrue(paid);
+        assertEquals(controller.calls, List.of(new CostCall(player, ability,
+                !route.equals("stack") && !route.equals("chosen"), false)));
+        assertEquals(controller.sacrificed, List.of(creature));
+        assertEquals(controller.lifeBefore, List.of(20));
+        assertEquals(controller.lifeChoices, List.of(2));
+        assertEquals(player.getLife(), 18);
+        assertTrue(game.getCardState(creature, null).isInZone(ZoneType.Graveyard));
+        assertTrue(peer.calls.isEmpty());
+    }
+
+    @Test
+    public void manaPaymentUsesExtensionOnlyForActualSourceCosts() {
+        Game game = game(false);
+        Player player = game.getRegisteredPlayers().get(0);
+        CostRecordingController controller = costController(game, player);
+        Card land = add(game, player, "Plains", ZoneType.Battlefield);
+        SpellAbility ability = costAbility(game, player, "W");
+        assertTrue(ComputerUtilMana.canPayManaCost(ability, player, 0, true));
+        assertTrue(controller.calls.isEmpty());
+        assertTrue(ComputerUtil.playNoStack(player, ability, game, true));
+        assertEquals(controller.calls.size(), 2);
+        assertEquals(controller.calls.get(0), new CostCall(player, ability, true, false));
+        CostCall mana = controller.calls.get(1);
+        assertSame(mana.payer(), player);
+        assertSame(mana.ability().getHostCard(), land);
+        assertTrue(mana.effect());
+        assertTrue(mana.payMana());
+        assertEquals(controller.taps, 1);
+        assertTrue(land.isTapped());
+    }
+
+    @Test
+    public void costExtensionPreservesPayerRefusalAndExceptions() {
+        Game game = game(false);
+        Player payer = game.getRegisteredPlayers().get(0);
+        Player activator = game.getRegisteredPlayers().get(1);
+        CostRecordingController controller = costController(game, payer);
+        CostRecordingController peer = costController(game, activator);
+        SpellAbility ability = costAbility(game, activator, "PayLife<21>");
+        assertFalse(new CostPayment(ability.getPayCosts(), ability).payComputerCosts(
+                AiCostDecision.forPayment(payer, ability, true, false)));
+        assertEquals(controller.calls, List.of(new CostCall(payer, ability, true, false)));
+        assertNull(controller.lifeChoices.get(0));
+        assertEquals(payer.getLife(), 20);
+        assertTrue(peer.calls.isEmpty());
+        controller.failure = new IllegalStateException("cost probe failed");
+        RuntimeException actual = expectThrows(RuntimeException.class, () ->
+                new CostPayment(ability.getPayCosts(), ability).payComputerCosts(
+                        AiCostDecision.forPayment(payer, ability, true, false)));
+        assertSame(actual, controller.failure);
+        assertEquals(payer.getLife(), 20);
+    }
+
 }

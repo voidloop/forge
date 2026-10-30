@@ -1251,7 +1251,7 @@ public class PlayerControllerAi extends PlayerController {
     public CardCollectionView chooseCardsForCost(CardCollectionView optionList, SpellAbility sa, CostPartWithList cpl, int amount, boolean isOptional, String prompt) {
         assert(false);
         //Untested placeholder. The AI does not currently pay like this.
-        return cpl.accept(new AiCostDecision(player, sa, true)).cards;
+        return cpl.accept(createAiCostDecision(player, sa, true, false)).cards;
     }
 
     @Override
@@ -1261,9 +1261,14 @@ public class PlayerControllerAi extends PlayerController {
         return ComputerUtilMana.payManaCost(toPay, ability, player, effect);
     }
 
+    /** Override to observe native cost answers without replacing the payment algorithm. */
+    protected AiCostDecision createAiCostDecision(Player payer, SpellAbility ability, boolean effect, boolean payMana) {
+        return new AiCostDecision(payer, ability, effect, payMana);
+    }
+
     @Override
     public CostDecisionMakerBase getCostDecisionMaker(Player player, SpellAbility ability, boolean effect, String prompt) {
-        return new AiCostDecision(player, ability, effect);
+        return createAiCostDecision(player, ability, effect, false);
     }
 
     @Override
@@ -1274,7 +1279,7 @@ public class PlayerControllerAi extends PlayerController {
             }
 
             final CostPayment pay = new CostPayment(cost, sa);
-            return pay.payComputerCosts(new AiCostDecision(player, sa, true));
+            return pay.payComputerCosts(createAiCostDecision(player, sa, true, false));
         }
         return false;
     }
