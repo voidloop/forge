@@ -19,13 +19,13 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 import com.google.common.base.Supplier;
 
-import static forge.rl.ObservationFacade.data;
+import static forge.rl.StateReader.data;
 
 /** Reads current and printed card facts after the facade authorizes access. */
 final class CardReader {
     private CardReader() { }
 
-    static Map<String, Object> read(Card card, ObservationFacade view, Combat combat) {
+    static Map<String, Object> read(Card card, StateReader view, Combat combat) {
         ZoneType zone = card.getZone() == null ? null : card.getZone().getZoneType();
         boolean battlefield = zone == ZoneType.Battlefield;
         boolean down = card.isFaceDown();

@@ -13,7 +13,7 @@ import forge.game.zone.ZoneType;
 
 import java.util.*;
 
-import static forge.rl.ObservationFacade.data;
+import static forge.rl.StateReader.data;
 
 /** Reads detached native facts. Python owns memory and graph assembly. */
 final class ObservationReader {
@@ -21,7 +21,7 @@ final class ObservationReader {
             ZoneType.Graveyard, ZoneType.Exile, ZoneType.Stack, ZoneType.Command);
     private ObservationReader() { }
 
-    static Map<String, Object> read(Player observer, ObservationFacade view) {
+    static Map<String, Object> read(Player observer, StateReader view) {
         Game game = observer.getGame();
         var phase = game.getPhaseHandler();
         List<Player> players = new ArrayList<>(game.getRegisteredPlayers());
@@ -84,13 +84,13 @@ final class ObservationReader {
                 "knowledge", data("visible", known, "zones", zones, "deck", deck));
     }
 
-    static Map<String, Object> card(Card card, ObservationFacade view) {
+    static Map<String, Object> card(Card card, StateReader view) {
         Map<String, Object> facts = CardReader.read(card, view, card.getGame().getCombat());
         facts.put("links", cardLinks(card, view));
         return facts;
     }
 
-    private static Map<String, Object> cardLinks(Card card, ObservationFacade view) {
+    private static Map<String, Object> cardLinks(Card card, StateReader view) {
         var links = data("attached_to", refs(view, Collections.singletonList(card.getEntityAttachedTo())),
                 "paired_with", refs(view, Collections.singletonList(card.getPairedWith())),
                 "exiled_with", refs(view, Collections.singletonList(card.getExiledWith())),
@@ -132,7 +132,7 @@ final class ObservationReader {
         return result;
     }
 
-    private static List<Map<String, Object>> refs(ObservationFacade view, Iterable<?> values) {
+    private static List<Map<String, Object>> refs(StateReader view, Iterable<?> values) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (values != null) {
             for (Object value : values) {
@@ -143,7 +143,7 @@ final class ObservationReader {
         return result;
     }
 
-    private static List<Object> stack(Game game, ObservationFacade view) {
+    private static List<Object> stack(Game game, StateReader view) {
         Map<SpellAbility, Integer> stackIds = new HashMap<>();
         game.getStack().forEach(item -> stackIds.put(item.getSpellAbility(), item.getId()));
         List<Object> result = new ArrayList<>();
@@ -194,7 +194,7 @@ final class ObservationReader {
         return result;
     }
 
-    private static List<Object> effects(Game game, ObservationFacade view) {
+    private static List<Object> effects(Game game, StateReader view) {
         List<Object> result = new ArrayList<>();
         for (Player player : game.getRegisteredPlayers()) {
             for (Card effect : player.getCardsIn(ZoneType.Command)) {
@@ -268,7 +268,7 @@ final class ObservationReader {
                         "RememberObjects", "SubAbility", "TriggerDescription")::contains);
     }
 
-    private static List<Map<String, Object>> returnRefs(Game game, ObservationFacade view, Iterable<?> remembered) {
+    private static List<Map<String, Object>> returnRefs(Game game, StateReader view, Iterable<?> remembered) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object value : remembered) {
             if (!(value instanceof Card card)) { continue; }
@@ -281,7 +281,7 @@ final class ObservationReader {
         return result;
     }
 
-    static Map<String, Object> commandEffect(Card card, ObservationFacade view) {
+    static Map<String, Object> commandEffect(Card card, StateReader view) {
         Card source = card.getEffectSource();
         Map<String, Object> sourceRef = source != null && view.canIdentify(source.getView()) ? view.reference(source) : null;
         // A remembered public source may be in hand; face-down objects cannot reuse that link.

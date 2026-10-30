@@ -32,7 +32,7 @@ import java.util.Collections;
 /** Sends only facts visible to the RL player across the Java/Python boundary. */
 public final class KnowledgeEventObserver {
     private final Player observer;
-    private final ObservationFacade view;
+    private final StateReader view;
     private IKnowledgeEventCallback callback;
     private record PendingMove(GameEventCardChangeZone event, String sourceName) { }
     private final List<PendingMove> pendingMoves = new ArrayList<>();
@@ -58,7 +58,7 @@ public final class KnowledgeEventObserver {
         }
     }
 
-    KnowledgeEventObserver(Player observer, ObservationFacade view, IKnowledgeEventCallback callback) {
+    KnowledgeEventObserver(Player observer, StateReader view, IKnowledgeEventCallback callback) {
         this.observer = observer;
         this.view = view;
         this.callback = callback;

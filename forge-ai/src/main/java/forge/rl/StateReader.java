@@ -15,23 +15,23 @@ import java.security.SecureRandom;
 import java.util.*;
 
 /** Observer-bound access to Forge. Only detached data crosses this boundary. */
-public final class ObservationFacade {
+public final class StateReader {
     private final Player observer;
     private final Map<Integer, Integer> aliases = new HashMap<>();
     private final Set<Integer> usedAliases = new HashSet<>();
     private final Random random;
     private KnowledgeEventObserver events;
 
-    public ObservationFacade(Player observer) {
+    public StateReader(Player observer) {
         this(observer, new SecureRandom());
     }
 
     /** Reproducible aliases for private recording/replay setup, independent of game randomness. */
-    public ObservationFacade(Player observer, long aliasSeed) {
+    public StateReader(Player observer, long aliasSeed) {
         this(observer, new Random(aliasSeed));
     }
 
-    ObservationFacade(Player observer, Random random) {
+    StateReader(Player observer, Random random) {
         this.observer = Objects.requireNonNull(observer);
         this.random = random;
     }

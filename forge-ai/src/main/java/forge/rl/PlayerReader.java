@@ -8,13 +8,13 @@ import forge.game.zone.ZoneType;
 
 import java.util.*;
 
-import static forge.rl.ObservationFacade.data;
+import static forge.rl.StateReader.data;
 
 /** Public player counters and native mana-source capabilities. */
 final class PlayerReader {
     private PlayerReader() { }
 
-    static Map<String, Object> read(Player player, ObservationFacade view, int seat) {
+    static Map<String, Object> read(Player player, StateReader view, int seat) {
         Game game = player.getGame();
         var pool = player.getManaPool();
         var result = data("id", player.getId(), "side", view.side(player), "life", player.getLife(),
