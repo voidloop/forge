@@ -1,6 +1,5 @@
 package forge.ai.probe;
 
-import forge.LobbyPlayer;
 import forge.ImageKeys;
 import forge.StaticData;
 import forge.CardStorageReader;
@@ -8,6 +7,8 @@ import forge.ai.AiController;
 import forge.ai.AiPlayDecision;
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
+import forge.rl.EffectCastProbe;
+import forge.rl.PlayerControllerRecordingAi;
 import forge.card.CardType;
 import forge.deck.Deck;
 import forge.game.Game;
@@ -60,12 +61,13 @@ public class AiControllerProbeTest {
     }
 
     private static final class ProbeLobby extends LobbyPlayerAi {
+        private final Probe probe = new Probe();
         private ProbeLobby(String name) { super(name, null); }
 
         @Override
         public Player createIngamePlayer(Game game, int id) {
             Player player = new Player(getName(), game, id);
-            player.setFirstController(new ProbeController(game, player, this, new ProbeAi(player, game)));
+            player.setFirstController(new PlayerControllerRecordingAi(game, player, this, probe));
             return player;
         }
     }
@@ -90,45 +92,45 @@ public class AiControllerProbeTest {
     private record Choice(ZoneType beforeZone, List<Card> beforeTargets,
                           AiPlayDecision decision, List<Card> targets) { }
 
-    private static final class ProbeAi extends AiController {
-        private SpellAbility castingFromEffect;
-        private int evaluations;
+    private static final class Probe implements EffectCastProbe {
+        private ZoneType beforeZone;
+        private List<Card> beforeTargets;
+        private Spell pending;
         private final List<Choice> choices = new ArrayList<>();
-
-        private ProbeAi(Player player, Game game) { super(player, game); }
+        private final List<Boolean> completed = new ArrayList<>();
+        private final List<String> events = new ArrayList<>();
 
         @Override
-        public AiPlayDecision canPlayFromEffectAI(Spell spell, boolean mandatory, boolean withoutMana) {
-            evaluations++;
-            ZoneType beforeZone = spell.getHostCard().getZone().getZoneType();
-            List<Card> beforeTargets = List.copyOf(spell.getTargets().getTargetCards());
-            AiPlayDecision decision = super.canPlayFromEffectAI(spell, mandatory, withoutMana);
-            // Evaluations outside the actual cast workflow are not teacher answers.
-            if (spell == castingFromEffect) {
-                choices.add(new Choice(beforeZone, beforeTargets, decision,
-                        List.copyOf(spell.getTargets().getTargetCards())));
-            }
-            return decision;
+        public void beforeDecision(Spell spell, boolean mandatory, boolean withoutMana) {
+            pending = spell;
+            beforeZone = spell.getHostCard().getZone().getZoneType();
+            beforeTargets = List.copyOf(spell.getTargets().getTargetCards());
+            events.add("before");
+        }
+
+        @Override
+        public void decided(Spell spell, AiPlayDecision decision) {
+            assertSame(spell, pending);
+            choices.add(new Choice(beforeZone, beforeTargets, decision,
+                    List.copyOf(spell.getTargets().getTargetCards())));
+            events.add("decided");
+        }
+
+        @Override
+        public void completed(Spell spell, boolean cast) {
+            assertSame(spell, pending);
+            completed.add(cast);
+            events.add("completed");
         }
     }
 
-    private static final class ProbeController extends PlayerControllerAi {
-        private final ProbeAi probe;
+    private Probe probe(Player player) {
+        return ((ProbeLobby) player.getLobbyPlayer()).probe;
+    }
 
-        private ProbeController(Game game, Player player, LobbyPlayer lobby, ProbeAi probe) {
-            super(game, player, lobby, probe);
-            this.probe = probe;
-        }
-
-        @Override
-        public boolean playSaFromPlayEffect(SpellAbility ability) {
-            SpellAbility previous = probe.castingFromEffect;
-            probe.castingFromEffect = ability;
-            try {
-                return super.playSaFromPlayEffect(ability);
-            } finally {
-                probe.castingFromEffect = previous;
-            }
+    private static final class InjectedController extends PlayerControllerAi {
+        private InjectedController(Game game, Player player, AiController ai) {
+            super(game, player, player.getLobbyPlayer(), ai);
         }
     }
 
@@ -146,11 +148,11 @@ public class AiControllerProbeTest {
         SpellAbility spell = AbilityUtils.getBasicSpellsFromPlayEffect(source, first).get(0).copyWithNoManaCost();
         assertTrue(first.getController().playSaFromPlayEffect(spell));
         assertEquals(game.getStack().peekAbility().getTargets().getTargetCards(), List.of(target));
-        assertThrows(NullPointerException.class, () -> new ProbeController(game, first, first.getLobbyPlayer(), null));
+        assertThrows(NullPointerException.class, () -> new InjectedController(game, first, null));
         assertThrows(IllegalArgumentException.class,
-                () -> new ProbeController(game, first, first.getLobbyPlayer(), new ProbeAi(second, game)));
+                () -> new InjectedController(game, first, new AiController(second, game)));
         assertThrows(IllegalArgumentException.class,
-                () -> new ProbeController(game, first, first.getLobbyPlayer(), new ProbeAi(first, game(false))));
+                () -> new InjectedController(game, first, new AiController(first, game(false))));
     }
 
     @DataProvider(name = "effectCasts")
@@ -164,19 +166,20 @@ public class AiControllerProbeTest {
         Game game = game(true);
         Player player = game.getRegisteredPlayers().get(seat);
         Player opponent = game.getRegisteredPlayers().get(1 - seat);
-        ProbeAi probe = (ProbeAi) ((PlayerControllerAi) player.getController()).getAi();
-        ProbeAi peer = (ProbeAi) ((PlayerControllerAi) opponent.getController()).getAi();
+        Probe probe = probe(player);
+        Probe peer = probe(opponent);
         Card target = accept ? add(game, opponent, "Weapons Vendor", ZoneType.Battlefield) : null;
         if (failPayment) {
             add(game, opponent, "Arachne, Psionic Weaver", ZoneType.Battlefield).setChosenType("Artifact");
         }
         Card source = add(game, player, failPayment ? "White Auracite" : "Get Lost", ZoneType.Hand);
         Spell spell = (Spell) AbilityUtils.getBasicSpellsFromPlayEffect(source, player).get(0).copyWithNoManaCost();
-        assertEquals(probe.canPlayFromEffectAI(spell, false, true) == AiPlayDecision.WillPlay, accept);
+        assertEquals(((PlayerControllerAi) player.getController()).getAi().canPlayFromEffectAI(spell, false, true) == AiPlayDecision.WillPlay, accept);
         assertTrue(probe.choices.isEmpty());
         spell.resetTargets();
         assertEquals(player.getController().playSaFromPlayEffect(spell), accept && !failPayment);
-        assertEquals(probe.evaluations, 2);
+        assertEquals(probe.events, List.of("before", "decided", "completed"));
+        assertEquals(probe.completed, List.of(accept && !failPayment));
         assertEquals(probe.choices.size(), 1);
         Choice choice = probe.choices.get(0);
         assertEquals(choice.beforeZone(), ZoneType.Hand);
@@ -186,9 +189,9 @@ public class AiControllerProbeTest {
         assertEquals(game.getStack().isEmpty(), !accept || failPayment);
         assertEquals(game.getCardState(source, null).getZone().getZoneType(),
                 accept && !failPayment ? ZoneType.Stack : ZoneType.Hand);
-        assertEquals(peer.evaluations, 0);
+        assertTrue(peer.events.isEmpty());
         assertTrue(peer.choices.isEmpty());
-        assertNull(probe.castingFromEffect);
+
         if (accept && !failPayment) {
             assertEquals(game.getStack().peekAbility().getTargets().getTargetCards(), List.of(target));
         }
@@ -200,7 +203,7 @@ public class AiControllerProbeTest {
         Game game = game(true);
         Player player = game.getRegisteredPlayers().get(0);
         Player opponent = game.getRegisteredPlayers().get(1);
-        ProbeAi probe = (ProbeAi) ((PlayerControllerAi) player.getController()).getAi();
+        Probe probe = probe(player);
         Card original = add(game, opponent, "Lightning Strike", ZoneType.Hand);
         SpellAbility top = AbilityUtils.getBasicSpellsFromPlayEffect(original, opponent).get(0);
         top.getTargets().add(player);
@@ -209,19 +212,19 @@ public class AiControllerProbeTest {
         Card source = add(game, player, "Insidious Will", ZoneType.Hand);
         Spell spell = (Spell) AbilityUtils.getBasicSpellsFromPlayEffect(source, player).get(0).copyWithNoManaCost();
         assertTrue(player.getController().playSaFromPlayEffect(spell));
-        assertTrue(probe.evaluations > 1, "Native copy evaluation must exercise the nested call");
+        assertEquals(probe.events, List.of("before", "decided", "completed"));
         assertEquals(probe.choices.size(), 1);
         assertEquals(probe.choices.get(0).decision(), AiPlayDecision.WillPlay);
         assertEquals(spell.getChosenList().get(0).getApi(), ApiType.CopySpellAbility);
         assertSame(game.getStack().peekAbility(), spell);
-        assertNull(probe.castingFromEffect);
+
     }
 
     @Test
     public void nativeExceptionPropagatesAndClosesProbeScope() {
         Game game = game(true);
         Player player = game.getRegisteredPlayers().get(0);
-        ProbeAi probe = (ProbeAi) ((PlayerControllerAi) player.getController()).getAi();
+        Probe probe = probe(player);
         Card source = add(game, player, "White Auracite", ZoneType.Hand);
         RuntimeException failure = new IllegalStateException("native evaluation failed");
         AtomicBoolean armed = new AtomicBoolean();
@@ -236,10 +239,14 @@ public class AiControllerProbeTest {
         RuntimeException actual = expectThrows(RuntimeException.class,
                 () -> player.getController().playSaFromPlayEffect(spell));
         assertSame(actual, failure);
-        assertEquals(probe.evaluations, 1);
+        assertEquals(probe.events, List.of("before"));
+        assertTrue(probe.completed.isEmpty());
         assertTrue(probe.choices.isEmpty());
-        assertNull(probe.castingFromEffect);
+
         assertTrue(game.getStack().isEmpty());
         assertTrue(source.isInZone(ZoneType.Hand));
+        armed.set(false);
+        ((PlayerControllerAi) player.getController()).getAi().canPlayFromEffectAI(spell, false, true);
+        assertEquals(probe.events, List.of("before"), "Failed cast scope must be closed");
     }
 }
