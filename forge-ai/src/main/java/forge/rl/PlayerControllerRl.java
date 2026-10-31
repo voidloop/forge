@@ -2,6 +2,7 @@ package forge.rl;
 
 import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.AttackersDecision;
+import forge.rl.decisions.BlockersDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -268,7 +269,14 @@ public final class PlayerControllerRl extends PlayerController {
             request.apply(response(request.data));
         } catch (RuntimeException error) { throw stop(error); }
     }
-    @Override public void declareBlockers(Player defender, Combat combat) { throw unsupported("declareBlockers"); }
+    @Override public void declareBlockers(Player defender, Combat combat) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new BlockersDecision(player, observation, defender, combat);
+            request.apply(response(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public CardCollection orderBlockers(Card attacker, CardCollection blockers) { throw unsupported("orderBlockers"); }
     @Override public CardCollection orderBlocker(final Card attacker, final Card blocker, final CardCollection oldBlockers) { throw unsupported("orderBlocker"); }
     @Override public CardCollection orderAttackers(Card blocker, CardCollection attackers) { throw unsupported("orderAttackers"); }

@@ -2,6 +2,7 @@ package forge.rl;
 
 import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.AttackersDecision;
+import forge.rl.decisions.BlockersDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -165,6 +166,23 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             activeKind = "declare_attackers";
             callback.before(request.data);
             super.declareAttackers(attacker, combat);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode());
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
+    @Override public void declareBlockers(Player defender, Combat combat) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            var request = new BlockersDecision(player, observation, defender, combat);
+            activeKind = "declare_blockers";
+            callback.before(request.data);
+            super.declareBlockers(defender, combat);
             if (failure != null) { throw failure; }
             callback.after(request.encode());
         } catch (RuntimeException error) { failure = error; throw error; }
