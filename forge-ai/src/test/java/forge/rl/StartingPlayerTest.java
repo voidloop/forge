@@ -98,6 +98,7 @@ public class StartingPlayerTest {
                     var state = (Map<?, ?>) request.get("state");
                     assertNull(((Map<?, ?>) state.get("game")).get("phase"));
                     assertEquals(((Map<?, ?>) state.get("game")).get("active_player"), "none");
+                    assertEquals(((Map<?, ?>) state.get("game")).get("observer"), Map.of("kind", "player", "id", p.getId()));
                     assertTrue(((List<?>) state.get("cards")).isEmpty());
                     Player first = draw ? p.getSingleOpponent() : p;
                     chosen[0] = first.getId();

@@ -74,7 +74,7 @@ final class ObservationReader {
         // A native look grant reveals identities, not their physical library order.
         cardFacts.sort(Comparator.comparingInt(card -> (Integer) card.get("id")));
         known.sort(Comparator.comparingInt(card -> (Integer) card.get("id")));
-        return data("game", data("active_player", view.side(phase.getPlayerTurn()),
+        return data("game", data("observer", view.reference(observer), "active_player", view.side(phase.getPlayerTurn()),
                 "starting_player", view.side(game.getStartingPlayer()), "native_format", game.getRules().getGameType().name(),
                 "starting_life", observer.getStartingLife(), "day_time", game.getDayTime(),
                 "in_combat", phase.inCombat(), "phase", phase.getPhase() == null ? null : phase.getPhase().name(),
@@ -154,7 +154,7 @@ final class ObservationReader {
             var identity = view.identity(host);
             boolean down = host.isFaceDown();
             var facts = data("id", view.stackAlias(item.getId()), "card_name", identity == null ? null : identity.getName(),
-                    "scope", down && identity != null ? "observer_private" : "public", "controller", view.side(ability.getActivatingPlayer()),
+                    "controller", view.side(ability.getActivatingPlayer()),
                     "is_token", host.isToken(), "is_face_down", down,
                     "copied_name", identity == null ? null : PrintedText.copiedName(host),
                     "api", ability.getApi() == null ? null : ability.getApi().name(),

@@ -42,7 +42,7 @@ public final class DecisionRequest<T extends GameEntity> {
                     throw new UnsupportedOperationException("selection of hidden or unbound card");
                 }
                 descriptions.add(Map.of("type", "card", "name", card.getName(),
-                        "controller", card.getController().getName(), "zone", card.getZone().getZoneType().name()));
+                        "zone", card.getZone().getZoneType().name()));
             } else if (entity instanceof Player candidate && candidate.getGame() == observer.getGame() && observer.getGame().getPlayers().contains(candidate)) {
                 descriptions.add(Map.of("type", "player", "name", candidate.getName()));
             } else { throw new UnsupportedOperationException("selection entity"); }
