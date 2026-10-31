@@ -3,6 +3,8 @@ package forge.rl;
 import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.AttackersDecision;
 import forge.rl.decisions.BlockersDecision;
+import forge.rl.decisions.CombatDamageDecision;
+import forge.rl.decisions.CombatGraveyardDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -18,8 +20,10 @@ import forge.game.cost.CostPartMana;
 import forge.game.mana.ManaConversionMatrix;
 import forge.game.Game;
 import forge.game.GameEntity;
+import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.combat.Combat;
+import forge.game.zone.ZoneType;
 import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
@@ -185,6 +189,43 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             super.declareBlockers(defender, combat);
             if (failure != null) { throw failure; }
             callback.after(request.encode());
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
+    @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
+            int damage, GameEntity defender, boolean overrideOrder) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            var request = new CombatDamageDecision(player, observation, source, targets, remaining, damage, defender, overrideOrder);
+            activeKind = "combat_damage";
+            callback.before(request.data);
+            var chosen = super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode(chosen));
+            return chosen;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
+    @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            var request = new CombatGraveyardDecision(player, observation, cards, destinationZone, source);
+            activeKind = "combat_graveyard_order";
+            callback.before(request.data);
+            var chosen = super.orderMoveToZoneList(cards, destinationZone, source);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode(chosen));
+            return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
     }

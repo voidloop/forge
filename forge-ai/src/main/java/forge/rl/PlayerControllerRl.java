@@ -3,6 +3,8 @@ package forge.rl;
 import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.AttackersDecision;
 import forge.rl.decisions.BlockersDecision;
+import forge.rl.decisions.CombatDamageDecision;
+import forge.rl.decisions.CombatGraveyardDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -215,7 +217,15 @@ public final class PlayerControllerRl extends PlayerController {
     }
     @Override public List<PaperCard> sideboard(final Deck deck, GameType gameType, String message) { throw unsupported("sideboard"); }
     @Override public List<PaperCard> chooseCardsYouWonToAddToDeck(List<PaperCard> losses) { throw unsupported("chooseCardsYouWonToAddToDeck"); }
-    @Override public Map<Card, Integer> assignCombatDamage(Card attacker, CardCollectionView blockers, CardCollectionView remaining, int damageDealt, GameEntity defender, boolean overrideOrder) { throw unsupported("assignCombatDamage"); }
+    @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
+            int damage, GameEntity defender, boolean overrideOrder) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new CombatDamageDecision(player, observation, source, targets, remaining, damage, defender, overrideOrder);
+            return request.apply(response(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public Map<GameEntity, Integer> divideShield(Card effectSource, Map<GameEntity, Integer> affected, int shieldAmount) { throw unsupported("divideShield"); }
     @Override public Map<Byte, Integer> specifyManaCombo(SpellAbility sa, ColorSet colorSet, int manaAmount, boolean different) { throw unsupported("specifyManaCombo"); }
     @Override public CardCollectionView choosePermanentsToSacrifice(SpellAbility sa, int min, int max, CardCollectionView validTargets, String message) { throw unsupported("choosePermanentsToSacrifice"); }
@@ -291,7 +301,14 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) { throw unsupported("arrangeForScry"); }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForSurveil(CardCollection topN) { throw unsupported("arrangeForSurveil"); }
     @Override public boolean willPutCardOnTop(Card c) { throw unsupported("willPutCardOnTop"); }
-    @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) { throw unsupported("orderMoveToZoneList"); }
+    @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new CombatGraveyardDecision(player, observation, cards, destinationZone, source);
+            return request.apply(response(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public CardCollectionView chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa, CardCollection validCards, int min, int max, CardCollectionView visibleToChooser) { throw unsupported("chooseCardsToDiscardFrom"); }
     @Override public CardCollectionView chooseCardsToDiscardUnlessType(int min, CardCollectionView hand, String[] unlessTypes, SpellAbility sa) { throw unsupported("chooseCardsToDiscardUnlessType"); }
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
