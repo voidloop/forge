@@ -47,7 +47,9 @@ public final class PlayerControllerRl extends PlayerController {
     private final IPlayerDecisionCallback callback;
     private RuntimeException failure;
     private Prepared active;
+    private LandChoice pendingLand;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
+    private record LandChoice(SpellAbility ability, Card card) { }
 
     private List<Integer> answer(Map<String, Object> request) {
         checkActive();
@@ -103,6 +105,26 @@ public final class PlayerControllerRl extends PlayerController {
 
     private RuntimeException unsupported(String method) {
         return stop(new UnsupportedOperationException("PlayerControllerRl: unsupported " + method));
+    }
+
+    private void requireBasicLandPriority() {
+        checkActive();
+        if (getGame().getAge() != GameStage.Play || getGame().isGameOver()
+                || getGame().getPhaseHandler().getPriorityPlayer() != player) {
+            throw stop(new IllegalStateException("Player does not have live priority"));
+        }
+        // shortcut: explicit pass/basic-land fixture; expand other priority families separately.
+        if (!getGame().getStack().isEmpty() || !getGame().getCardsIn(ZoneType.Command).isEmpty()) {
+            throw unsupported("basic-land priority context");
+        }
+        for (Card card : getGame().getCardsIn(ZoneType.Battlefield)) {
+            if (!card.isBasicLand() || card.isFaceDown()) { throw unsupported("basic-land priority battlefield"); }
+        }
+        for (Card card : player.getCardsIn(ZoneType.Hand)) {
+            if (!card.isBasicLand() || card.isFaceDown() || !card.getView().canBeShownTo(player.getView())) {
+                throw unsupported("basic-land priority hand");
+            }
+        }
     }
 
     @Override public SpellAbility getAbilityToPlay(Card hostCard, List<SpellAbility> abilities, ITriggerEvent triggerEvent) {
@@ -247,8 +269,55 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public Object vote(SpellAbility sa, String prompt, List<Object> options, ListMultimap<Object, Player> votes, Player forPlayer, boolean optional) { throw unsupported("vote"); }
     @Override public boolean mulliganKeepHand(Player player, int cardsToReturn) { throw unsupported("mulliganKeepHand"); }
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) { throw unsupported("tuckCardsViaMulligan"); }
-    @Override public List<SpellAbility> chooseSpellAbilityToPlay() { throw unsupported("chooseSpellAbilityToPlay"); }
-    @Override public boolean playChosenSpellAbility(SpellAbility sa) { throw unsupported("playChosenSpellAbility"); }
+    @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
+        try {
+            requireBasicLandPriority();
+            if (pendingLand != null) { throw stop(new IllegalStateException("Previous land choice has not been executed")); }
+            List<SpellAbility> bindings = new ArrayList<>();
+            List<Map<String, Object>> options = new ArrayList<>();
+            options.add(Map.of("type", "pass"));
+            for (Card card : player.getCardsIn(ZoneType.Hand)) {
+                for (SpellAbility ability : card.getSpellAbilities()) {
+                    if (!ability.isLandAbility()) { continue; }
+                    ability.setActivatingPlayer(player);
+                    if (ability.canPlay()) {
+                        bindings.add(ability);
+                        options.add(Map.of("type", "play_land", "name", card.getName(), "zone", "Hand"));
+                    }
+                }
+            }
+            int chosen = single(Map.of("kind", "priority_basic_lands", "scope", "pass_or_basic_land_from_hand",
+                    "options", List.copyOf(options)), 0, options.size() - 1);
+            if (chosen == 0) { return null; }
+            SpellAbility ability = bindings.get(chosen - 1);
+            pendingLand = new LandChoice(ability, ability.getHostCard());
+            return List.of(ability);
+        } catch (RuntimeException error) { throw stop(error); }
+    }
+
+    @Override public boolean playChosenSpellAbility(SpellAbility sa) {
+        checkActive();
+        LandChoice choice = pendingLand;
+        pendingLand = null;
+        try {
+            requireBasicLandPriority();
+            if (choice == null || sa != choice.ability() || sa.getHostCard() != choice.card()) {
+                throw new IllegalArgumentException("Unbound land action");
+            }
+            Card card = choice.card();
+            if (getGame().getCardState(card, null) != card || !card.isInZone(ZoneType.Hand) || !sa.canPlay()) {
+                throw new IllegalArgumentException("Selected land is no longer playable");
+            }
+            int played = player.getLandsPlayedThisTurn();
+            if (!PlaySpellAbility.playSpellAbility(this, player, sa)
+                    || !getGame().getCardState(card, null).isInZone(ZoneType.Battlefield)
+                    || getGame().getCardState(card, null).getController() != player
+                    || player.getLandsPlayedThisTurn() != played + 1) {
+                throw new IllegalStateException("Native land execution did not complete");
+            }
+            return true;
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
         requireActive(sa);
         if (min != 1 || num != 1 || !possible.contains(active.mode())) { throw unsupported("changed modes"); }

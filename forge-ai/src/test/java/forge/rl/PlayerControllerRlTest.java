@@ -98,7 +98,7 @@ public class PlayerControllerRlTest {
         assertFalse(decline.player().getController().playSaFromPlayEffect(decline.offered()));
         assertEquals(OriginalCompositeChoice.observe(decline.game()), before);
         var unsupported = fixture(request -> { throw new AssertionError("Client must not be called"); });
-        assertThrows(UnsupportedOperationException.class, () -> unsupported.player().getController().chooseSpellAbilityToPlay());
+        assertThrows(UnsupportedOperationException.class, () -> unsupported.player().getController().chooseStartingHand(List.of()));
         assertThrows(UnsupportedOperationException.class, () -> unsupported.player().getController().chooseNumber(null, "stopped", 0, 1));
         var missing = fixture(request -> null);
         assertThrows(NullPointerException.class, () -> missing.player().getController().chooseNumber(null, "missing", 0, 1));
