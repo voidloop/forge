@@ -6,17 +6,17 @@ import forge.game.player.Player;
 import forge.game.player.PlayerController;
 
 /** Native teacher lobby; selection recording uses only the original public controller API. */
-public final class LobbyPlayerSelectionTeacher extends LobbyPlayerAi {
-    private final ISelectionRecordCallback callback;
+public final class LobbyPlayerTeacher extends LobbyPlayerAi {
+    private final IDecisionRecordCallback callback;
 
-    public LobbyPlayerSelectionTeacher(String name, ISelectionRecordCallback callback) {
+    public LobbyPlayerTeacher(String name, IDecisionRecordCallback callback) {
         super(name, null);
         this.callback = java.util.Objects.requireNonNull(callback);
     }
 
     @Override public Player createIngamePlayer(Game game, int id) {
         Player player = new Player(getName(), game, id);
-        player.setFirstController(new PlayerControllerSelectionTeacher(game, player, this, callback));
+        player.setFirstController(new PlayerControllerTeacher(game, player, this, callback));
         return player;
     }
 

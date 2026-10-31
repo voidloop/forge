@@ -12,14 +12,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One native selection: detached question and private, invocation-local bindings. */
-final class SelectionRequest<T extends GameEntity> {
+final class DecisionRequest<T extends GameEntity> {
     final Map<String, Object> data;
     private final List<T> bindings;
     private final int lower;
     private final int upper;
     private final boolean optional;
 
-    SelectionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
+    DecisionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
             boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
         if (reveal != null || params != null && !params.isEmpty()) {

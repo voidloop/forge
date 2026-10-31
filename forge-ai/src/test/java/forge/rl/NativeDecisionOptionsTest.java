@@ -29,7 +29,7 @@ import java.util.Map;
 import static org.testng.Assert.*;
 
 /** Exercise independent client selections through original native effects. */
-public class NativeSelectionOptionsTest {
+public class NativeDecisionOptionsTest {
     private record Request(String kind, List<String> options, int min, int max, boolean optional) { }
 
     @BeforeClass public void initialize() { OriginalCompositeChoice.initialize(Path.of("..")); }
@@ -172,7 +172,7 @@ public class NativeSelectionOptionsTest {
                     root.resolve("forge-game/target/classes").toRealPath());
         }
         OriginalCompositeChoice.initialize(root);
-        var test = new NativeSelectionOptionsTest();
+        var test = new NativeDecisionOptionsTest();
         test.effectsSupplyFilteredAndCurrentOptions();
         test.validatesSelectionsAndOptionalDeclines();
         test.rejectsUnimplementedVisibilityBeforeCallingClient();

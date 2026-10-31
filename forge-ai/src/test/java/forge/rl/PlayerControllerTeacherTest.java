@@ -16,9 +16,9 @@ import java.util.Random;
 
 import static org.testng.Assert.*;
 
-public class SelectionTeacherTest {
+public class PlayerControllerTeacherTest {
     private record Entry(Map<String, Object> request, List<Integer> answer) { }
-    private static final class Recording implements ISelectionRecordCallback {
+    private static final class Recording implements IDecisionRecordCallback {
         final List<Entry> entries = new ArrayList<>();
         Map<String, Object> pending;
         @Override public void before(Map<String, Object> request) {
@@ -35,14 +35,14 @@ public class SelectionTeacherTest {
 
     @BeforeClass public void initialize() { OriginalCompositeChoice.initialize(Path.of("..")); }
 
-    private static List<Object> state(NativeSelectionOptionsTest.Fixture fixture) {
+    private static List<Object> state(NativeDecisionOptionsTest.Fixture fixture) {
         List<Object> result = new ArrayList<>(OriginalCompositeChoice.observe(fixture.game()));
         result.add(fixture.game().getRegisteredPlayers().indexOf(fixture.host().getChosenPlayer()));
         result.add(fixture.host().getChosenCards().stream().map(card -> card.getName()).toList());
         return List.copyOf(result);
     }
 
-    private static Outcome execute(NativeSelectionOptionsTest.Fixture fixture) {
+    private static Outcome execute(NativeDecisionOptionsTest.Fixture fixture) {
         List<List<Object>> states = new ArrayList<>();
         states.add(state(fixture));
         for (String script : List.of(
@@ -51,7 +51,7 @@ public class SelectionTeacherTest {
                 "DB$ Tap | CardChoices$ Creature.YouCtrl+untapped | ChoiceAmount$ 1",
                 "DB$ Tap | CardChoices$ Creature.YouCtrl+untapped | ChoiceAmount$ 1",
                 "DB$ ChooseCard | Choices$ Creature.YouCtrl | Amount$ 2 | MinAmount$ 0 | AIMaxAmount$ 0")) {
-            NativeSelectionOptionsTest.resolve(fixture.host(), fixture.actor(), script);
+            NativeDecisionOptionsTest.resolve(fixture.host(), fixture.actor(), script);
             states.add(state(fixture));
         }
         return new Outcome(states, MyRandom.getRandom().nextLong());
@@ -59,10 +59,10 @@ public class SelectionTeacherTest {
 
     @Test public void recordsFinalAnswersNeutrallyAndReplaysOnNewObjects() {
         MyRandom.setRandom(new Random(0));
-        Outcome baseline = execute(NativeSelectionOptionsTest.fixture(new LobbyPlayerAi("first", null)));
+        Outcome baseline = execute(NativeDecisionOptionsTest.fixture(new LobbyPlayerAi("first", null)));
         Recording recording = new Recording();
         MyRandom.setRandom(new Random(0));
-        var teacher = NativeSelectionOptionsTest.fixture(new LobbyPlayerSelectionTeacher("first", recording));
+        var teacher = NativeDecisionOptionsTest.fixture(new LobbyPlayerTeacher("first", recording));
         Outcome recorded = execute(teacher);
         assertEquals(recorded, baseline, "Recorder changed native facts or RNG");
         assertNull(recording.pending);
@@ -72,7 +72,7 @@ public class SelectionTeacherTest {
         assertEquals(recording.entries.get(4).answer(), List.of(), "Empty optional answer was changed");
         int[] cursor = {0};
         MyRandom.setRandom(new Random(0));
-        var replay = NativeSelectionOptionsTest.fixture(new LobbyPlayerRl("first", request -> {
+        var replay = NativeDecisionOptionsTest.fixture(new LobbyPlayerRl("first", request -> {
             assertTrue(cursor[0] < recording.entries.size(), "Recording exhausted");
             Entry entry = recording.entries.get(cursor[0]++);
             assertEquals(request, entry.request(), "Question diverged");
@@ -87,7 +87,7 @@ public class SelectionTeacherTest {
 
     @Test public void nativeFailuresLeavePendingQuestionsAndStopTeacher() {
         Recording recording = new Recording();
-        var fixture = NativeSelectionOptionsTest.fixture(new LobbyPlayerSelectionTeacher("first", recording));
+        var fixture = NativeDecisionOptionsTest.fixture(new LobbyPlayerTeacher("first", recording));
         var controller = fixture.actor().getController();
         // Native AiController rejects a missing ability; it must never become an empty answer.
         assertThrows(UnsupportedOperationException.class, () -> controller.chooseCardsForEffect(
@@ -105,7 +105,7 @@ public class SelectionTeacherTest {
                     root.resolve(entry.getValue() + "/target/classes").toRealPath());
         }
         OriginalCompositeChoice.initialize(root);
-        var test = new SelectionTeacherTest();
+        var test = new PlayerControllerTeacherTest();
         test.recordsFinalAnswersNeutrallyAndReplaysOnNewObjects();
         test.nativeFailuresLeavePendingQuestionsAndStopTeacher();
         System.out.println("PASS: selection teacher is neutral to native facts/RNG; final answers replay on new objects without AI; errors stay incomplete");

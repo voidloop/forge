@@ -85,7 +85,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            SelectionRequest<T> request = new SelectionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
+            DecisionRequest<T> request = new DecisionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
             return request.apply(response(request.data));
         } catch (RuntimeException error) { throw stop(error); }
     }
