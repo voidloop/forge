@@ -1,6 +1,7 @@
 package forge.rl;
 
 import forge.deck.Deck;
+import forge.LobbyPlayer;
 import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameStage;
@@ -33,17 +34,21 @@ public class NativeSelectionOptionsTest {
 
     @BeforeClass public void initialize() { OriginalCompositeChoice.initialize(Path.of("..")); }
 
-    private static void resolve(Card host, Player player, String script) {
+    static void resolve(Card host, Player player, String script) {
         SpellAbility ability = AbilityFactory.getAbility(script, host);
         ability.setActivatingPlayer(player);
         AbilityUtils.resolve(ability);
     }
 
-    private record Fixture(Game game, Player actor, Player opponent, Card host, Card first, Card second) { }
+    record Fixture(Game game, Player actor, Player opponent, Card host, Card first, Card second) { }
 
     private static Fixture fixture(IPlayerDecisionCallback callback) {
+        return fixture(new LobbyPlayerRl("first", callback));
+    }
+
+    static Fixture fixture(LobbyPlayer actorLobby) {
         var seats = List.of(
-                new RegisteredPlayer(new Deck("first")).setPlayer(new LobbyPlayerRl("first", callback)),
+                new RegisteredPlayer(new Deck("first")).setPlayer(actorLobby),
                 new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerRl("second", request -> {
                     throw new AssertionError("Unexpected opponent choice");
                 })));

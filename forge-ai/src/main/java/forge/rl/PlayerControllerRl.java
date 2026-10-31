@@ -33,7 +33,6 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -72,39 +71,10 @@ public final class PlayerControllerRl extends PlayerController {
     private <T extends GameEntity> List<T> select(String kind, Iterable<T> options, String title,
             int min, int max, boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         checkActive();
-        if (reveal != null || params != null && !params.isEmpty()) {
-            throw unsupported("selection reveal/parameters");
-        }
-        if (min < 0 || max < min) { throw unsupported("selection bounds"); }
-        List<T> bindings = new ArrayList<>();
-        List<Map<String, Object>> descriptions = new ArrayList<>();
-        for (T entity : options) {
-            if (entity instanceof Card card) {
-                // shortcut: visible face-up cards only; add reveals/face-down choices after their own proof.
-                if (card.getGame() != getGame() || card.getZone() == null || card.isFaceDown()
-                        || !card.getView().canBeShownTo(player.getView())) {
-                    throw unsupported("selection of hidden or unbound card");
-                }
-                descriptions.add(Map.of("type", "card", "name", card.getName(),
-                        "controller", card.getController().getName(), "zone", card.getZone().getZoneType().name()));
-            } else if (entity instanceof Player candidate && getGame().getPlayers().contains(candidate)) {
-                descriptions.add(Map.of("type", "player", "name", candidate.getName()));
-            } else { throw unsupported("selection entity"); }
-            bindings.add(entity);
-        }
-        if (new HashSet<>(bindings).size() != bindings.size()) { throw unsupported("duplicate native options"); }
-        // Native InputSelectEntitiesFromList also caps both bounds to the available list size.
-        int lower = Math.min(min, bindings.size());
-        int upper = Math.min(max, bindings.size());
-        List<Integer> selected = answer(Map.of("kind", kind, "prompt", Objects.toString(title, ""),
-                "options", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
-                "relatedPlayer", related == null ? "" : related.getName()));
-        if (selected.size() > upper || selected.size() < lower && !(optional && selected.isEmpty())
-                || new HashSet<>(selected).size() != selected.size()
-                || selected.stream().anyMatch(index -> index < 0 || index >= bindings.size())) {
-            throw stop(new IllegalArgumentException("Invalid client selection for " + kind));
-        }
-        return selected.stream().map(bindings::get).toList();
+        try {
+            SelectionRequest<T> request = new SelectionRequest<>(player, kind, options, title, min, max, optional, reveal, related, params);
+            return request.apply(answer(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
     }
 
     private boolean binary(String kind, String prompt, String choice) {
