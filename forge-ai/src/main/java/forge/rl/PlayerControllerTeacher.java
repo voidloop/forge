@@ -1,6 +1,7 @@
 package forge.rl;
 
 import forge.rl.decisions.PriorityDecision;
+import forge.rl.decisions.AttackersDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -17,6 +18,7 @@ import forge.game.mana.ManaConversionMatrix;
 import forge.game.Game;
 import forge.game.GameEntity;
 import forge.game.card.CardCollectionView;
+import forge.game.combat.Combat;
 import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
@@ -150,6 +152,23 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
         return record(null, "discard_cleanup", () -> CleanupDecision.create(player, observation, numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), answer -> answer);
+    }
+
+    @Override public void declareAttackers(Player attacker, Combat combat) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            var request = new AttackersDecision(player, observation, attacker, combat);
+            activeKind = "declare_attackers";
+            callback.before(request.data);
+            super.declareAttackers(attacker, combat);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode());
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
     }
 
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {

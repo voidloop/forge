@@ -1,6 +1,7 @@
 package forge.rl;
 
 import forge.rl.decisions.PriorityDecision;
+import forge.rl.decisions.AttackersDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -259,7 +260,14 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public boolean confirmTrigger(WrappedAbility sa) { throw unsupported("confirmTrigger"); }
     @Override public List<Card> exertAttackers(List<Card> attackers) { throw unsupported("exertAttackers"); }
     @Override public List<Card> enlistAttackers(List<Card> attackers) { throw unsupported("enlistAttackers"); }
-    @Override public void declareAttackers(Player attacker, Combat combat) { throw unsupported("declareAttackers"); }
+    @Override public void declareAttackers(Player attacker, Combat combat) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new AttackersDecision(player, observation, attacker, combat);
+            request.apply(response(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public void declareBlockers(Player defender, Combat combat) { throw unsupported("declareBlockers"); }
     @Override public CardCollection orderBlockers(Card attacker, CardCollection blockers) { throw unsupported("orderBlockers"); }
     @Override public CardCollection orderBlocker(final Card attacker, final Card blocker, final CardCollection oldBlockers) { throw unsupported("orderBlocker"); }
