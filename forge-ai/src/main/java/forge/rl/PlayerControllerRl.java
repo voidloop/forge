@@ -33,6 +33,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -66,6 +67,44 @@ public final class PlayerControllerRl extends PlayerController {
             throw stop(new IllegalArgumentException("Invalid client response for " + request.get("kind")));
         }
         return values.get(0);
+    }
+
+    private <T extends GameEntity> List<T> select(String kind, Iterable<T> options, String title,
+            int min, int max, boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
+        checkActive();
+        if (reveal != null || params != null && !params.isEmpty()) {
+            throw unsupported("selection reveal/parameters");
+        }
+        if (min < 0 || max < min) { throw unsupported("selection bounds"); }
+        List<T> bindings = new ArrayList<>();
+        List<Map<String, Object>> descriptions = new ArrayList<>();
+        for (T entity : options) {
+            if (entity instanceof Card card) {
+                // shortcut: visible face-up cards only; add reveals/face-down choices after their own proof.
+                if (card.getGame() != getGame() || card.getZone() == null || card.isFaceDown()
+                        || !card.getView().canBeShownTo(player.getView())) {
+                    throw unsupported("selection of hidden or unbound card");
+                }
+                descriptions.add(Map.of("type", "card", "name", card.getName(),
+                        "controller", card.getController().getName(), "zone", card.getZone().getZoneType().name()));
+            } else if (entity instanceof Player candidate && getGame().getPlayers().contains(candidate)) {
+                descriptions.add(Map.of("type", "player", "name", candidate.getName()));
+            } else { throw unsupported("selection entity"); }
+            bindings.add(entity);
+        }
+        if (new HashSet<>(bindings).size() != bindings.size()) { throw unsupported("duplicate native options"); }
+        // Native InputSelectEntitiesFromList also caps both bounds to the available list size.
+        int lower = Math.min(min, bindings.size());
+        int upper = Math.min(max, bindings.size());
+        List<Integer> selected = answer(Map.of("kind", kind, "prompt", Objects.toString(title, ""),
+                "options", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
+                "relatedPlayer", related == null ? "" : related.getName()));
+        if (selected.size() > upper || selected.size() < lower && !(optional && selected.isEmpty())
+                || new HashSet<>(selected).size() != selected.size()
+                || selected.stream().anyMatch(index -> index < 0 || index >= bindings.size())) {
+            throw stop(new IllegalArgumentException("Invalid client selection for " + kind));
+        }
+        return selected.stream().map(bindings::get).toList();
     }
 
     private boolean binary(String kind, String prompt, String choice) {
@@ -175,10 +214,17 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public Pair<SpellAbilityStackInstance, GameObject> chooseTarget(SpellAbility sa, List<Pair<SpellAbilityStackInstance, GameObject>> allTargets) { throw unsupported("chooseTarget"); }
     @Override public boolean helpPayForAssistSpell(ManaCostBeingPaid cost, SpellAbility sa, int max, int requested) { throw unsupported("helpPayForAssistSpell"); }
     @Override public Player choosePlayerToAssistPayment(FCollectionView<Player> optionList, SpellAbility sa, String title, int max) { throw unsupported("choosePlayerToAssistPayment"); }
-    @Override public CardCollectionView chooseCardsForEffect(CardCollectionView sourceList, SpellAbility sa, String title, int min, int max, boolean isOptional, Map<String, Object> params) { throw unsupported("chooseCardsForEffect"); }
+    @Override public CardCollectionView chooseCardsForEffect(CardCollectionView sourceList, SpellAbility sa, String title, int min, int max, boolean isOptional, Map<String, Object> params) {
+        return new CardCollection(select("cards", sourceList, title, min, max, isOptional, null, null, params));
+    }
     @Override public CardCollection chooseCardsForEffectMultiple(Map<String, CardCollection> validMap, SpellAbility sa, String title, boolean isOptional) { throw unsupported("chooseCardsForEffectMultiple"); }
-    @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> optionList, DelayedReveal delayedReveal, SpellAbility sa, String title, boolean isOptional, Player relatedPlayer, Map<String, Object> params) { throw unsupported("chooseSingleEntityForEffect"); }
-    @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> optionList, int min, int max, DelayedReveal delayedReveal, SpellAbility sa, String title, Player relatedPlayer, Map<String, Object> params) { throw unsupported("chooseEntitiesForEffect"); }
+    @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> optionList, DelayedReveal delayedReveal, SpellAbility sa, String title, boolean isOptional, Player relatedPlayer, Map<String, Object> params) {
+        List<T> chosen = select("single_entity", optionList, title, 1, 1, isOptional, delayedReveal, relatedPlayer, params);
+        return chosen.isEmpty() ? null : chosen.get(0);
+    }
+    @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> optionList, int min, int max, DelayedReveal delayedReveal, SpellAbility sa, String title, Player relatedPlayer, Map<String, Object> params) {
+        return select("entities", optionList, title, min, max, min == 0, delayedReveal, relatedPlayer, params);
+    }
     @Override public List<SpellAbility> chooseSpellAbilitiesForEffect(List<SpellAbility> spells, SpellAbility sa, String title, int num, Map<String, Object> params) { throw unsupported("chooseSpellAbilitiesForEffect"); }
     @Override public SpellAbility chooseSingleSpellForEffect(List<SpellAbility> spells, SpellAbility sa, String title, Map<String, Object> params) { throw unsupported("chooseSingleSpellForEffect"); }
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message, List<String> options, Card cardToShow, Map<String, Object> params) {

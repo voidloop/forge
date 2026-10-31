@@ -1,10 +1,7 @@
 package forge.rl;
 
-import forge.ai.LobbyPlayerAi;
-import forge.ai.PlayerControllerAi;
 import forge.deck.Deck;
 import forge.game.Game;
-import forge.game.GameEntity;
 import forge.game.GameRules;
 import forge.game.GameStage;
 import forge.game.GameType;
@@ -13,75 +10,26 @@ import forge.game.ability.AbilityFactory;
 import forge.game.ability.AbilityUtils;
 import forge.game.card.Card;
 import forge.game.card.CardCollection;
-import forge.game.card.CardCollectionView;
 import forge.game.phase.PhaseType;
 import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
+import forge.util.collect.FCollection;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
-import forge.util.collect.FCollectionView;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
 import static org.testng.Assert.*;
 
-/** Experiment only: receive original effect arguments, without implementing RL selections. */
+/** Exercise independent client selections through original native effects. */
 public class NativeSelectionOptionsTest {
     private record Request(String kind, List<String> options, int min, int max, boolean optional) { }
-
-    // AI is only the fixture scaffold. The three selection overrides never call it.
-    private static final class SelectionController extends PlayerControllerAi {
-        final List<Request> requests = new ArrayList<>();
-
-        SelectionController(Game game, Player player, LobbyPlayerAi lobby) { super(game, player, lobby); }
-
-        private <T extends GameEntity> List<T> select(String kind, Iterable<T> options, int min, int max, boolean optional) {
-            List<T> bindings = new ArrayList<>();
-            options.forEach(bindings::add);
-            Request request = new Request(kind, bindings.stream().map(GameEntity::getName).toList(), min, max, optional);
-            requests.add(request);
-            System.out.println("NATIVE OPTIONS " + request);
-            // The scripted client sees labels only; indices bind to this invocation's native list.
-            List<Integer> answer = kind.equals("cards") ? List.of(1, 0) : List.of(0);
-            assertTrue(answer.size() >= min && answer.size() <= max);
-            assertEquals(new HashSet<>(answer).size(), answer.size());
-            assertTrue(answer.stream().allMatch(index -> index >= 0 && index < bindings.size()));
-            return answer.stream().map(bindings::get).toList();
-        }
-
-        @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options,
-                DelayedReveal reveal, SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-            assertNull(reveal);
-            return select("single", options, optional ? 0 : 1, 1, optional).get(0);
-        }
-
-        @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
-                String title, int min, int max, boolean optional, Map<String, Object> params) {
-            return new CardCollection(select("cards", options, min, max, optional));
-        }
-
-        @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options,
-                int min, int max, DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-            assertNull(reveal);
-            return select("entities", options, min, max, false);
-        }
-    }
-
-    private static final class SelectionLobby extends LobbyPlayerAi {
-        SelectionLobby() { super("first", null); }
-        @Override public Player createIngamePlayer(Game game, int id) {
-            Player player = new Player(getName(), game, id);
-            player.setFirstController(new SelectionController(game, player, this));
-            return player;
-        }
-    }
 
     @BeforeClass public void initialize() { OriginalCompositeChoice.initialize(Path.of("..")); }
 
@@ -91,10 +39,14 @@ public class NativeSelectionOptionsTest {
         AbilityUtils.resolve(ability);
     }
 
-    @Test public void effectsSupplyFilteredAndCurrentOptions() {
+    private record Fixture(Game game, Player actor, Player opponent, Card host, Card first, Card second) { }
+
+    private static Fixture fixture(IPlayerDecisionCallback callback) {
         var seats = List.of(
-                new RegisteredPlayer(new Deck("first")).setPlayer(new SelectionLobby()),
-                new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerAi("second", null)));
+                new RegisteredPlayer(new Deck("first")).setPlayer(new LobbyPlayerRl("first", callback)),
+                new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerRl("second", request -> {
+                    throw new AssertionError("Unexpected opponent choice");
+                })));
         Game game = new Match(new GameRules(GameType.Constructed), seats, "native options").createGame();
         game.getRegisteredPlayers().forEach(player -> player.setLife(20, null));
         game.setAge(GameStage.Play);
@@ -107,14 +59,32 @@ public class NativeSelectionOptionsTest {
         add(game, opponent, "Air Elemental", ZoneType.Battlefield);
         add(game, actor, "Black Lotus", ZoneType.Library);
         add(game, opponent, "Lightning Bolt", ZoneType.Hand);
-        SelectionController controller = (SelectionController) actor.getController();
+        return new Fixture(game, actor, opponent, host, first, second);
+    }
+
+    @Test public void effectsSupplyFilteredAndCurrentOptions() {
+        List<Request> requests = new ArrayList<>();
+        Fixture fixture = fixture(request -> {
+            List<?> descriptions = (List<?>) request.get("options");
+            List<String> names = descriptions.stream().map(option -> (String) ((Map<?, ?>) option).get("name")).toList();
+            Request detached = new Request((String) request.get("kind"), names,
+                    (int) request.get("min"), (int) request.get("max"), (boolean) request.get("optional"));
+            requests.add(detached);
+            System.out.println("RL OPTIONS " + detached);
+            return detached.kind().equals("cards") ? List.of(1, 0) : List.of(0);
+        });
+        Card host = fixture.host();
+        Player actor = fixture.actor();
+        Player opponent = fixture.opponent();
+        Card first = fixture.first();
+        Card second = fixture.second();
 
         resolve(host, actor, "DB$ ChoosePlayer | Defined$ You | Choices$ Player.Opponent | DontNotify$ True");
         assertSame(host.getChosenPlayer(), opponent);
-        assertEquals(controller.requests.get(0), new Request("single", List.of("second"), 1, 1, false));
+        assertEquals(requests.get(0), new Request("single_entity", List.of("second"), 1, 1, false));
 
         resolve(host, actor, "DB$ ChooseCard | Defined$ You | ChoiceZone$ Battlefield | Choices$ Creature.YouCtrl | Amount$ 2 | Mandatory$ True");
-        assertEquals(controller.requests.get(1), new Request("cards", List.of("Grizzly Bears", "Runeclaw Bear"), 2, 2, false));
+        assertEquals(requests.get(1), new Request("cards", List.of("Grizzly Bears", "Runeclaw Bear"), 2, 2, false));
         assertEquals(new ArrayList<>(host.getChosenCards()), List.of(second, first));
 
         String tap = "DB$ Tap | CardChoices$ Creature.YouCtrl+untapped | ChoiceAmount$ 1";
@@ -124,16 +94,67 @@ public class NativeSelectionOptionsTest {
         assertFalse(host.isTapped());
         resolve(host, actor, tap);
         assertTrue(second.isTapped());
-        assertEquals(controller.requests.subList(2, 4), List.of(
+        assertEquals(requests.subList(2, 4), List.of(
                 new Request("entities", List.of("Grizzly Bears", "Runeclaw Bear"), 1, 1, false),
                 new Request("entities", List.of("Runeclaw Bear"), 1, 1, false)));
-        assertEquals(controller.requests.size(), 4);
+        assertEquals(requests.size(), 4);
     }
 
     private static Card add(Game game, Player player, String name, ZoneType zone) {
         Card card = OriginalCompositeChoice.add(game, player, name);
         if (zone != ZoneType.Hand) { card = game.getAction().moveTo(zone, card, null, null); }
         return card;
+    }
+
+    @Test public void validatesSelectionsAndOptionalDeclines() {
+        String chooseTwo = "DB$ ChooseCard | Defined$ You | Choices$ Creature.YouCtrl | Amount$ 2 | Mandatory$ True";
+        for (List<Integer> invalid : List.of(List.<Integer>of(), List.of(0), List.of(0, 0), List.of(-1, 0), List.of(0, 2), List.of(0, 1, 2))) {
+            Fixture fixture = fixture(request -> invalid);
+            assertThrows(IllegalArgumentException.class, () -> resolve(fixture.host(), fixture.actor(), chooseTwo));
+            assertTrue(fixture.host().getChosenCards().isEmpty());
+            assertThrows(IllegalArgumentException.class, () -> fixture.actor().getController().chooseNumber(null, "stopped", 0, 1));
+        }
+        Fixture optional = fixture(request -> List.of());
+        resolve(optional.host(), optional.actor(), "DB$ ChooseCard | Defined$ You | Choices$ Creature.YouCtrl | Amount$ 2");
+        assertTrue(optional.host().getChosenCards().isEmpty());
+        assertNull(optional.actor().getController().chooseSingleEntityForEffect(optional.actor().getOpponents(), null, "optional", true, null));
+        assertTrue(optional.actor().getController().chooseEntitiesForEffect(new FCollection<>(List.of(optional.first())), 0, 1, null, null, "up to one", null, null).isEmpty());
+
+        Fixture partial = fixture(request -> List.of(0));
+        assertThrows(IllegalArgumentException.class, () -> partial.actor().getController().chooseCardsForEffect(
+                new CardCollection(List.of(partial.first(), partial.second())), null, "optional pair", 2, 2, true, null));
+
+        Fixture shortList = fixture(request -> {
+            assertEquals(request.get("min"), 1);
+            assertEquals(request.get("max"), 1);
+            return List.of(0);
+        });
+        var chosen = shortList.actor().getController().chooseCardsForEffect(new CardCollection(shortList.first()), null, "available", 3, 4, false, null);
+        assertSame(chosen.getFirst(), shortList.first());
+        Fixture empty = fixture(request -> {
+            assertEquals(request.get("min"), 0);
+            assertEquals(request.get("max"), 0);
+            return List.of();
+        });
+        assertNull(empty.actor().getController().chooseSingleEntityForEffect(new FCollection<Card>(), null, "empty", false, null));
+    }
+
+    @Test public void rejectsUnimplementedVisibilityBeforeCallingClient() {
+        for (String variant : List.of("library", "opponent_hand", "face_down", "reveal", "params")) {
+            Fixture fixture = fixture(request -> { throw new AssertionError("Unsupported context reached client"); });
+            Card candidate = switch (variant) {
+                case "library" -> fixture.actor().getCardsIn(ZoneType.Library).getFirst();
+                case "opponent_hand" -> fixture.opponent().getCardsIn(ZoneType.Hand).getFirst();
+                default -> fixture.first();
+            };
+            if (variant.equals("face_down")) { candidate.setFaceDown(true); }
+            DelayedReveal reveal = variant.equals("reveal")
+                    ? new DelayedReveal(new CardCollection(candidate), ZoneType.Battlefield, fixture.actor().getView(), "reveal") : null;
+            Map<String, Object> params = variant.equals("params") ? Map.of("unsupported", true) : null;
+            assertThrows(UnsupportedOperationException.class, () -> fixture.actor().getController().chooseSingleEntityForEffect(
+                    new FCollection<>(List.of(candidate)), reveal, null, "choose", false, null, params));
+            assertThrows(UnsupportedOperationException.class, () -> fixture.actor().getController().chooseNumber(null, "stopped", 0, 1));
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -143,7 +164,10 @@ public class NativeSelectionOptionsTest {
                     root.resolve("forge-game/target/classes").toRealPath());
         }
         OriginalCompositeChoice.initialize(root);
-        new NativeSelectionOptionsTest().effectsSupplyFilteredAndCurrentOptions();
-        System.out.println("PASS: original effects supply filtered current options and constraints; local responses applied without AI selection");
+        var test = new NativeSelectionOptionsTest();
+        test.effectsSupplyFilteredAndCurrentOptions();
+        test.validatesSelectionsAndOptionalDeclines();
+        test.rejectsUnimplementedVisibilityBeforeCallingClient();
+        System.out.println("PASS: independent RL selections use original effect options; execution, constraints, refusal and visibility guards verified");
     }
 }
