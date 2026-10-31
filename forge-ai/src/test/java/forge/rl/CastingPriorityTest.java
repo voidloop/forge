@@ -1,8 +1,12 @@
 package forge.rl;
 
+import com.google.common.eventbus.Subscribe;
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
 import forge.game.card.Card;
+import forge.game.event.GameEventCardChangeZone;
+import forge.game.event.GameEventPlayerPriority;
+import forge.game.event.GameEventSpellResolved;
 import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
@@ -35,25 +39,62 @@ public class CastingPriorityTest {
 
     private static Player opponent(ManaPaymentBoundaryTest.Fixture f) { return f.game().getPlayers().get(1); }
 
+    public static final class Events {
+        final ManaPaymentBoundaryTest.Fixture fixture;
+        final List<String> trace = new ArrayList<>();
+        Events(ManaPaymentBoundaryTest.Fixture fixture) { this.fixture = fixture; }
+        @Subscribe public void moved(GameEventCardChangeZone event) {
+            if (event.card().getId() == fixture.spell().getHostCard().getId()) {
+                trace.add("move:" + event.from().zoneType() + ":" + event.to().zoneType());
+            }
+        }
+        @Subscribe public void resolved(GameEventSpellResolved event) {
+            trace.add("resolved:" + event.hasFizzled());
+        }
+        @Subscribe public void priority(GameEventPlayerPriority event) {
+            trace.add("priority:" + fixture.game().getPlayers().indexOf(fixture.game().getPhaseHandler().getPriorityPlayer()));
+        }
+    }
+
     private record Result(List<Object> facts, List<Boolean> taps, List<String> pool,
-                          List<String> spent, List<Integer> activated, long rng) { }
+                          List<String> spent, List<Integer> activated, List<String> events, long rng) { }
     private static Result run(ManaPaymentBoundaryTest.Fixture f) {
         var phase = f.game().getPhaseHandler();
-        // Prepared MAIN2 fixture: enable the native priority loop, then stop before resolution.
+        Events events = new Events(f);
+        f.game().subscribeToEvents(events);
+        // Enable priority in the prepared MAIN2 fixture; subsequent steps are entirely native.
         phase.onStackResolved();
         phase.mainLoopStep();
         assertSame(f.game().getStack().peekAbility(), f.spell());
         assertSame(phase.getPriorityPlayer(), opponent(f));
-        assertNull(opponent(f).getController().chooseSpellAbilityToPlay());
         assertEquals(f.game().getStack().size(), 1);
         assertTrue(f.spell().getHostCard().isInZone(ZoneType.Stack));
-        assertFalse(f.game().isGameOver());
         var pool = new ArrayList<String>();
         f.player().getManaPool().forEach(mana -> pool.add(mana.toString()));
+        // Capture the casting facts before continuing through automatic resolution.
+        var spent = f.spell().getPayingMana().stream().map(mana -> mana.toString()).toList();
+        var activated = f.spell().getPayingManaAbilities().stream().map(sa -> f.lands().indexOf(sa.getHostCard())).toList();
+        phase.mainLoopStep();
+        assertTrue(f.game().getStack().isEmpty());
+        assertFalse(f.game().getStack().isResolving());
+        Card creature = f.game().getCardState(f.spell().getHostCard());
+        assertTrue(creature.isInZone(ZoneType.Battlefield));
+        assertSame(creature.getController(), f.player());
+        assertEquals(creature.getNetPower(), 2);
+        assertEquals(creature.getNetToughness(), 2);
+        assertFalse(creature.isTapped());
+        assertTrue(creature.hasSickness());
+        assertEquals(creature.getDamage(), 0);
+        assertSame(phase.getPriorityPlayer(), f.player());
+        phase.mainLoopStep();
+        assertSame(phase.getPriorityPlayer(), opponent(f));
+        assertEquals(phase.getPhase(), PhaseType.MAIN2);
+        assertEquals(phase.getTurn(), 6);
+        assertFalse(f.game().isGameOver());
+        assertEquals(events.trace, List.of("priority:0", "move:Hand:Stack", "priority:1",
+                "move:Stack:Battlefield", "resolved:false", "priority:0"));
         return new Result(OriginalCompositeChoice.observe(f.game()), f.lands().stream().map(Card::isTapped).toList(), pool,
-                f.spell().getPayingMana().stream().map(mana -> mana.toString()).toList(),
-                f.spell().getPayingManaAbilities().stream().map(sa -> f.lands().indexOf(sa.getHostCard())).toList(),
-                MyRandom.getRandom().nextLong());
+                spent, activated, List.copyOf(events.trace), MyRandom.getRandom().nextLong());
     }
 
     private static void close(ManaPaymentBoundaryTest.Fixture f) {
@@ -72,7 +113,7 @@ public class CastingPriorityTest {
             var teacher = ManaPaymentBoundaryTest.fixture(new LobbyPlayerTeacher("first", recording), floating);
             opponent(teacher).dangerouslySetController(new PlayerControllerTeacher(teacher.game(), opponent(teacher), new LobbyPlayerAi("second", null), recording));
             assertEquals(run(teacher), expected, "Teacher changed native casting facts or RNG");
-            assertEquals(recording.requests.size(), 4);
+            assertEquals(recording.requests.size(), 5);
             assertNull(recording.pending);
             assertFalse(recording.executing);
             assertEquals(((Map<?, ?>) recording.requests.get(0).get("options")).get("kind"), "priority");
@@ -80,7 +121,20 @@ public class CastingPriorityTest {
             var result = (Map<?, ?>) recording.execution.get("options");
             assertEquals(result.get("reported"), true);
             assertEquals(result.get("onStack"), true);
-            assertEquals(recording.answers.subList(2, 4), List.of(List.of(0), List.of(0)));
+            assertEquals(recording.answers.subList(2, 5), List.of(List.of(0), List.of(0), List.of(0)));
+            for (int i = 2; i < 5; i++) {
+                assertEquals(((Map<?, ?>) recording.requests.get(i).get("options")).get("kind"), "priority");
+                var state = (Map<?, ?>) recording.requests.get(i).get("state");
+                assertEquals(((List<?>) state.get("stack")).size(), i == 4 ? 0 : 1);
+                var creature = ((List<?>) state.get("cards")).stream().map(card -> (Map<?, ?>) card)
+                        .filter(card -> "Grizzly Bears".equals(card.get("card_name"))).findFirst().orElseThrow();
+                assertEquals(creature.get("zone"), i == 4 ? "battlefield" : "stack");
+                if (i == 4) {
+                    assertEquals(creature.get("power"), 2);
+                    assertEquals(creature.get("toughness"), 2);
+                    assertEquals(creature.get("summoning_sick"), true);
+                }
+            }
             int[] position = {0};
             int[] executions = {0};
             IPlayerDecisionCallback callback = new IPlayerDecisionCallback() {
@@ -103,7 +157,8 @@ public class CastingPriorityTest {
             assertEquals(applied.pool(), expected.pool());
             assertEquals(applied.spent(), expected.spent());
             assertEquals(applied.activated(), expected.activated());
-            assertEquals(position[0], 4);
+            assertEquals(applied.events(), expected.events());
+            assertEquals(position[0], 5);
             assertEquals(executions[0], 1);
             close(teacher); close(replay);
         }
@@ -182,6 +237,6 @@ public class CastingPriorityTest {
         test.nativeCastingTeacherAndReplayKeepChoicePaymentAndResultSeparate();
         test.clientCanPlayLandFloatBasicManaThenSpendItInNativeCast();
         test.exactVariantsStaleTimingAndCancelledCastStayExplicit();
-        System.out.println("PASS: native priority casting, payment, floating basic mana, occupied-stack passes and replay verified");
+        System.out.println("PASS: native priority casting, payment, resolution, returned priority and replay verified");
     }
 }
