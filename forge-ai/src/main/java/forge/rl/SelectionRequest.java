@@ -62,9 +62,9 @@ final class SelectionRequest<T extends GameEntity> {
             descriptions.set(i, Map.copyOf(option));
         }
         Map<String, Object> decision = StateReader.data("kind", kind, "prompt", Objects.toString(title, ""),
-                "options", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
+                "items", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
                 "relatedPlayer", related == null ? null : view.reference(related));
-        data = Map.of("observation", facts, "decision", decision);
+        data = Map.of("state", facts, "options", decision);
     }
 
     List<T> apply(List<Integer> selected) {

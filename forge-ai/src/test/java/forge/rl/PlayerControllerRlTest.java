@@ -58,12 +58,14 @@ public class PlayerControllerRlTest {
             AtomicInteger calls = new AtomicInteger();
             var fixture = fixture(request -> {
                 calls.incrementAndGet();
-                return switch ((String) request.get("kind")) {
+                assertEquals(request.keySet(), java.util.Set.of("state", "options"));
+                Map<?, ?> options = (Map<?, ?>) request.get("options");
+                return switch ((String) options.get("kind")) {
                     case "number" -> List.of(3);
                     case "number_option", "binary", "confirm", "type" -> List.of(1);
                     case "mode_target" -> {
-                        assertEquals(request.get("targets"), List.of("Grizzly Bears"));
-                        assertEquals(((List<?>) request.get("modes")).size(), 2);
+                        assertEquals(((Map<?, ?>) ((List<?>) options.get("targets")).get(0)).get("name"), "Grizzly Bears");
+                        assertEquals(((List<?>) options.get("modes")).size(), 2);
                         yield List.of(0, 0);
                     }
                     default -> throw new AssertionError(request);
@@ -102,6 +104,12 @@ public class PlayerControllerRlTest {
         assertThrows(UnsupportedOperationException.class, () -> unsupported.player().getController().chooseNumber(null, "stopped", 0, 1));
         var missing = fixture(request -> null);
         assertThrows(NullPointerException.class, () -> missing.player().getController().chooseNumber(null, "missing", 0, 1));
+        var hidden = fixture(request -> { throw new AssertionError("Hidden source reached client"); });
+        hidden.offered().setHostCard(hidden.game().getAction().moveTo(forge.game.zone.ZoneType.Library,
+                hidden.offered().getHostCard(), null, null));
+        assertFalse(hidden.offered().getHostCard().getView().canBeShownTo(hidden.player().getView()));
+        assertThrows(UnsupportedOperationException.class, () -> hidden.player().getController().playSaFromPlayEffect(hidden.offered()));
+        assertThrows(UnsupportedOperationException.class, () -> hidden.player().getController().chooseNumber(null, "stopped", 0, 1));
         var rejected = fixture(request -> List.of(0, 0));
         rejected.offered().putParam("ValidAfterStack", "Ability");
         assertThrows(IllegalStateException.class, () -> rejected.player().getController().playSaFromPlayEffect(rejected.offered()));

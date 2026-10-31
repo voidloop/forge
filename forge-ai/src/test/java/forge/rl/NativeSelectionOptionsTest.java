@@ -70,8 +70,8 @@ public class NativeSelectionOptionsTest {
     @Test public void effectsSupplyFilteredAndCurrentOptions() {
         List<Request> requests = new ArrayList<>();
         Fixture fixture = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
-            List<?> descriptions = (List<?>) request.get("options");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+            List<?> descriptions = (List<?>) request.get("items");
             List<String> names = descriptions.stream().map(option -> (String) ((Map<?, ?>) option).get("name")).toList();
             Request detached = new Request((String) request.get("kind"), names,
                     (int) request.get("min"), (int) request.get("max"), (boolean) request.get("optional"));
@@ -131,7 +131,7 @@ public class NativeSelectionOptionsTest {
                 new CardCollection(List.of(partial.first(), partial.second())), null, "optional pair", 2, 2, true, null));
 
         Fixture shortList = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
             assertEquals(request.get("min"), 1);
             assertEquals(request.get("max"), 1);
             return List.of(0);
@@ -139,7 +139,7 @@ public class NativeSelectionOptionsTest {
         var chosen = shortList.actor().getController().chooseCardsForEffect(new CardCollection(shortList.first()), null, "available", 3, 4, false, null);
         assertSame(chosen.getFirst(), shortList.first());
         Fixture empty = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
             assertEquals(request.get("min"), 0);
             assertEquals(request.get("max"), 0);
             return List.of();

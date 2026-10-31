@@ -77,8 +77,10 @@ public class BasicLandPriorityTest {
     }
 
     @Test public void clientCanPassChooseLandAndReceivePriorityAgain() {
-        List<Map<String, Object>> requests = new ArrayList<>();
-        Fixture fixture = fixture(request -> {
+        List<Map<?, ?>> requests = new ArrayList<>();
+        Fixture fixture = fixture(envelope -> {
+            assertEquals(envelope.keySet(), java.util.Set.of("state", "options"));
+            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
             requests.add(request);
             assertEquals(request.get("kind"), "priority_basic_lands");
             assertEquals(request.get("scope"), "pass_or_basic_land_from_hand");
@@ -95,13 +97,14 @@ public class BasicLandPriorityTest {
         assertTrue(fixture.forest().isInZone(ZoneType.Hand));
         assertEquals(fixture.player().getLandsPlayedThisTurn(), 1);
         assertNull(controller.chooseSpellAbilityToPlay());
-        assertEquals(requests.get(0).get("options"), List.of(Map.of("type", "pass"),
-                Map.of("type", "play_land", "name", "Forest", "zone", "Hand"),
-                Map.of("type", "play_land", "name", "Island", "zone", "Hand")));
-        assertEquals(requests.get(2).get("options"), List.of(Map.of("type", "pass")));
+        assertEquals(((List<?>) requests.get(0).get("items")).stream()
+                .map(item -> ((Map<?, ?>) item).get("type")).toList(), List.of("pass", "play_land", "play_land"));
+        assertEquals(((Map<?, ?>) ((List<?>) requests.get(0).get("items")).get(2)).get("name"), "Island");
+        assertEquals(requests.get(2).get("items"), List.of(Map.of("type", "pass")));
         for (boolean opponentTurn : List.of(false, true)) {
-            Fixture restricted = fixture(request -> {
-                assertEquals(request.get("options"), List.of(Map.of("type", "pass")));
+            Fixture restricted = fixture(envelope -> {
+                Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+                assertEquals(request.get("items"), List.of(Map.of("type", "pass")));
                 return List.of(0);
             });
             restricted.game().getPhaseHandler().devModeSet(opponentTurn ? PhaseType.MAIN1 : PhaseType.COMBAT_BEGIN,

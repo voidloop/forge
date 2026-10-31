@@ -53,7 +53,15 @@ public final class PlayerControllerRl extends PlayerController {
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
     private record LandChoice(SpellAbility ability, Card card) { }
 
-    private List<Integer> answer(Map<String, Object> request) {
+    private List<Integer> answer(Map<String, Object> options) {
+        checkActive();
+        try {
+            startObservation();
+            return response(Map.of("state", observation.snapshot(), "options", options));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
+
+    private List<Integer> response(Map<String, Object> request) {
         checkActive();
         try {
             List<Integer> values = List.copyOf(Objects.requireNonNull(callback.choose(request), "Missing client response"));
@@ -78,7 +86,7 @@ public final class PlayerControllerRl extends PlayerController {
         try {
             startObservation();
             SelectionRequest<T> request = new SelectionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
-            return request.apply(answer(request.data));
+            return request.apply(response(request.data));
         } catch (RuntimeException error) { throw stop(error); }
     }
 
@@ -168,13 +176,18 @@ public final class PlayerControllerRl extends PlayerController {
                 || tgtSA.getActivatingPlayer() != player) {
             throw unsupported("playSaFromPlayEffect shape");
         }
+        Card source = tgtSA.getHostCard();
+        if (source.getGame() != getGame() || !observation.canIdentify(source.getView())) {
+            throw unsupported("unobservable or foreign modal source");
+        }
         List<AbilitySub> modes = CharmEffect.makePossibleOptions(tgtSA);
         List<SpellAbility> targets = new ArrayList<>();
         getGame().getStack().forEach(item -> targets.add(item.getSpellAbility()));
         List<Integer> values = answer(Map.of("kind", "mode_target", "optional", true,
+                "source", observation.reference(source),
                 "modes", modes.stream().map(mode -> mode.getParamOrDefault("SpellDescription", "")).toList(),
-                "targets", targets.stream().map(target -> target.getHostCard().isFaceDown()
-                        ? "Face-down spell" : target.getHostCard().getName()).toList()));
+                "targets", targets.stream().map(target -> Map.of("name", target.getHostCard().isFaceDown()
+                        ? "Face-down spell" : target.getHostCard().getName(), "key", observation.reference(target))).toList()));
         if (values.isEmpty()) { return false; }
         if (values.size() != 2 || values.get(0) < 0 || values.get(0) >= modes.size()
                 || values.get(1) < 0 || values.get(1) >= targets.size()) {
@@ -272,7 +285,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public Mana chooseManaFromPool(List<Mana> manaChoices) { throw unsupported("chooseManaFromPool"); }
     @Override public String chooseSomeType(String kindOfType, SpellAbility sa, Collection<String> validTypes, boolean isOptional) {
         List<String> options = List.copyOf(validTypes);
-        int index = single(Map.of("kind", "type", "prompt", kindOfType, "options", options, "optional", isOptional), isOptional ? -1 : 0, options.size() - 1);
+        int index = single(Map.of("kind", "type", "prompt", kindOfType, "items", options, "optional", isOptional), isOptional ? -1 : 0, options.size() - 1);
         return index == -1 ? null : options.get(index);
     }
     @Override public String chooseSector(Card assignee, String ai, List<String> sectors) { throw unsupported("chooseSector"); }
@@ -300,12 +313,13 @@ public final class PlayerControllerRl extends PlayerController {
                     ability.setActivatingPlayer(player);
                     if (ability.canPlay()) {
                         bindings.add(ability);
-                        options.add(Map.of("type", "play_land", "name", card.getName(), "zone", "Hand"));
+                        options.add(Map.of("type", "play_land", "name", card.getName(), "zone", "Hand",
+                                "key", observation.reference(card)));
                     }
                 }
             }
             int chosen = single(Map.of("kind", "priority_basic_lands", "scope", "pass_or_basic_land_from_hand",
-                    "options", List.copyOf(options)), 0, options.size() - 1);
+                    "items", List.copyOf(options)), 0, options.size() - 1);
             if (chosen == 0) { return null; }
             SpellAbility ability = bindings.get(chosen - 1);
             pendingLand = new LandChoice(ability, ability.getHostCard());
@@ -350,7 +364,7 @@ public final class PlayerControllerRl extends PlayerController {
     }
     @Override public int chooseNumber(SpellAbility sa, String title, List<Integer> values, Player relatedPlayer) {
         List<Integer> options = List.copyOf(values);
-        int index = single(Map.of("kind", "number_option", "prompt", Objects.toString(title, ""), "options", options), 0, options.size() - 1);
+        int index = single(Map.of("kind", "number_option", "prompt", Objects.toString(title, ""), "items", options), 0, options.size() - 1);
         return options.get(index);
     }
     @Override public boolean chooseBinary(SpellAbility sa, String question, BinaryChoiceType kindOfChoice, Boolean defaultChoice) {
