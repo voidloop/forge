@@ -29,6 +29,7 @@ import forge.game.Match;
 import forge.game.ability.AbilityUtils;
 import forge.game.ability.ApiType;
 import forge.game.ability.SpellApiBased;
+import forge.game.ability.effects.CharmEffect;
 import forge.game.card.Card;
 import forge.game.card.CardFactory;
 import forge.game.cost.Cost;
@@ -37,6 +38,8 @@ import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.game.spellability.Spell;
 import forge.game.spellability.SpellAbility;
+import forge.game.spellability.AbilitySub;
+import forge.rl.StateReader;
 import forge.game.zone.ZoneType;
 import forge.util.FileSection;
 import forge.util.FileUtil;
@@ -47,10 +50,13 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.testng.Assert.*;
 
@@ -109,6 +115,7 @@ public class AiControllerProbeTest {
         private final List<Choice> choices = new ArrayList<>();
         private final List<Boolean> completed = new ArrayList<>();
         private final List<String> events = new ArrayList<>();
+        private Consumer<Spell> capture;
 
         @Override
         public void beforeDecision(Spell spell, boolean mandatory, boolean withoutMana) {
@@ -123,6 +130,7 @@ public class AiControllerProbeTest {
             assertSame(spell, pending);
             choices.add(new Choice(beforeZone, beforeTargets, decision,
                     List.copyOf(spell.getTargets().getTargetCards())));
+            if (capture != null) { capture.accept(spell); }
             events.add("decided");
         }
 
@@ -228,6 +236,147 @@ public class AiControllerProbeTest {
         assertEquals(spell.getChosenList().get(0).getApi(), ApiType.CopySpellAbility);
         assertSame(game.getStack().peekAbility(), spell);
 
+    }
+
+    /** Private fixture bindings only; these two integers are not a model-input protocol. */
+    private record ModalChoice(int modeIndex, int targetIndex) {
+        static ModalChoice capture(Spell spell, List<SpellAbility> targets) {
+            if (spell.getChosenList() == null || spell.getChosenList().size() != 1
+                    || spell.getSubAbility() == null || spell.getSubAbility().getSubAbility() != null
+                    || spell.getSubAbility().getTargets().size() != 1) {
+                throw new IllegalArgumentException("Expected one mode and one spell target");
+            }
+            int mode = spell.getAdditionalAbilityList("Choices").indexOf(spell.getChosenList().get(0));
+            int target = targets.indexOf(spell.getSubAbility().getTargets().getFirstTargetedSpell());
+            if (mode < 0 || target < 0) { throw new IllegalArgumentException("Unbound native choice"); }
+            return new ModalChoice(mode, target);
+        }
+
+        void apply(Spell spell, List<SpellAbility> targets) {
+            // shortcut: one Counter mode/target; qualify other composite answers separately.
+            List<AbilitySub> modes = spell.getAdditionalAbilityList("Choices");
+            if (modeIndex < 0 || modeIndex >= modes.size() || targetIndex < 0 || targetIndex >= targets.size()
+                    || spell.getChosenList() != null || spell.getSubAbility() != null) {
+                throw new IllegalArgumentException("Invalid choice or non-fresh ability");
+            }
+            AbilitySub mode = modes.get(modeIndex);
+            SpellAbility target = targets.get(targetIndex);
+            if (mode.getApi() != ApiType.Counter || mode.getSubAbility() != null
+                    || !mode.getTargets().isEmpty() || !mode.canTarget(target)) {
+                throw new IllegalArgumentException("Invalid recorded mode or target");
+            }
+            mode.getTargets().add(target);
+            spell.setChosenList(new ArrayList<>(List.of(mode)));
+            CharmEffect.chainAbilities(spell, spell.getChosenList());
+        }
+    }
+
+    private record ModalFixture(Game game, Player player, Spell offered, SpellAbility target) { }
+
+    private ModalFixture modalFixture() {
+        Game game = game(true);
+        Player player = game.getRegisteredPlayers().get(0);
+        Player opponent = game.getRegisteredPlayers().get(1);
+        Card creature = add(game, opponent, "Grizzly Bears", ZoneType.Hand);
+        SpellAbility target = AbilityUtils.getBasicSpellsFromPlayEffect(creature, opponent).get(0);
+        target.setHostCard(game.getAction().moveToStack(creature, target));
+        game.getStack().add(target);
+        Card source = add(game, player, "Insidious Will", ZoneType.Hand);
+        Spell offered = (Spell) AbilityUtils.getBasicSpellsFromPlayEffect(source, player).get(0).copyWithNoManaCost();
+        return new ModalFixture(game, player, offered, target);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> modalObservation(StateReader reader) {
+        Map<String, Object> state = reader.snapshot();
+        List<Map<String, Object>> stack = (List<Map<String, Object>>) state.get("stack");
+        Map<Object, Object> positions = new HashMap<>();
+        // Stack IDs are JVM-global; compare positions while preserving all target edges.
+        stack.forEach(item -> positions.put(item.get("id"), item.get("position")));
+        for (Map<String, Object> item : stack) {
+            item.put("id", item.get("position"));
+            for (Map<String, Object> part : (List<Map<String, Object>>) item.get("parts")) {
+                for (Map<String, Object> target : (List<Map<String, Object>>) part.get("targets")) {
+                    Map<String, Object> reference = (Map<String, Object>) target.get("object");
+                    if ("stack_object".equals(reference.get("kind"))) {
+                        assertTrue(positions.containsKey(reference.get("id")), "Unbound stack target");
+                        reference.put("id", positions.get(reference.get("id")));
+                    }
+                }
+            }
+        }
+        return state;
+    }
+
+    private static final class ReapplyingController extends PlayerControllerAi {
+        private final ModalChoice choice;
+        private final List<SpellAbility> targets;
+
+        ReapplyingController(ModalFixture fixture, ModalChoice choice) {
+            super(fixture.game(), fixture.player(), fixture.player().getLobbyPlayer(),
+                    new AiController(fixture.player(), fixture.game()) {
+                        @Override public AiPlayDecision canPlayFromEffectAI(Spell spell, boolean mandatory, boolean withoutMana) {
+                            throw new AssertionError("Replay must not ask the AI to prepare the spell");
+                        }
+                        @Override public AiPlayDecision canPlaySa(SpellAbility ability) {
+                            throw new AssertionError("Replay must not evaluate candidates");
+                        }
+                        @Override public boolean doTrigger(SpellAbility ability, boolean mandatory) {
+                            throw new AssertionError("Replay must not ask the AI for targets");
+                        }
+                    });
+            this.choice = choice;
+            targets = List.of(fixture.target());
+        }
+
+        @Override public boolean playSaFromPlayEffect(SpellAbility ability) {
+            choice.apply((Spell) ability, targets);
+            return ComputerUtil.playStack(ability, player, getGame());
+        }
+    }
+
+    @Test
+    public void capturesAndReappliesCompositeChoiceAcrossGames() {
+        forge.util.MyRandom.setRandom(new Random(0));
+        ModalFixture teacher = modalFixture();
+        StateReader teacherView = new StateReader(teacher.player(), 42);
+        Map<String, Object> before = modalObservation(teacherView);
+        AtomicReference<ModalChoice> saved = new AtomicReference<>();
+        Probe probe = probe(teacher.player());
+        probe.capture = spell -> saved.set(ModalChoice.capture(spell, List.of(teacher.target())));
+        assertTrue(teacher.player().getController().playSaFromPlayEffect(teacher.offered()));
+        assertEquals(probe.events, List.of("before", "decided", "completed"));
+        assertEquals(probe.choices.get(0).decision(), AiPlayDecision.WillPlay);
+        assertEquals(probe.completed, List.of(true));
+        ModalChoice choice = saved.get();
+        assertEquals(choice, new ModalChoice(0, 0));
+        Map<String, Object> onStack = modalObservation(teacherView);
+        teacher.game().getStack().resolveStack();
+        assertTrue(teacher.game().getStack().isEmpty());
+        assertEquals(teacher.game().getCardState(teacher.target().getHostCard(), null).getZone().getZoneType(), ZoneType.Graveyard);
+        assertEquals(teacher.game().getCardState(teacher.offered().getHostCard(), null).getZone().getZoneType(), ZoneType.Graveyard);
+        Map<String, Object> resolved = modalObservation(teacherView);
+
+        ModalFixture replay = modalFixture();
+        assertNotSame(replay.offered(), teacher.offered());
+        assertNotSame(replay.target(), teacher.target());
+        StateReader replayView = new StateReader(replay.player(), 42);
+        assertEquals(modalObservation(replayView), before);
+        // Exercise the same two scalar values an external answer would supply.
+        ModalChoice decoded = new ModalChoice(choice.modeIndex(), choice.targetIndex());
+        assertThrows(IllegalArgumentException.class,
+                () -> new ModalChoice(0, 99).apply(replay.offered(), List.of(replay.target())));
+        assertNull(replay.offered().getChosenList());
+        assertNull(replay.offered().getSubAbility());
+        assertTrue(replay.offered().getAdditionalAbilityList("Choices").stream().allMatch(mode -> mode.getTargets().isEmpty()));
+        replay.player().dangerouslySetController(new ReapplyingController(replay, decoded));
+        assertTrue(replay.player().getController().playSaFromPlayEffect(replay.offered()));
+        assertSame(replay.offered().getSubAbility().getTargets().getFirstTargetedSpell(), replay.target());
+        assertEquals(modalObservation(replayView), onStack);
+        replay.game().getStack().resolveStack();
+        assertEquals(modalObservation(replayView), resolved);
+        assertTrue(probe(replay.player()).events.isEmpty());
+        System.out.println("Composite replay " + choice + ": pre-choice, stack and resolved observations match; target countered");
     }
 
     @Test
