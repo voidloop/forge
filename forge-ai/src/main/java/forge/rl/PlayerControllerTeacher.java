@@ -49,6 +49,31 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         }
     }
 
+    @Override public void awaitNextInput() {
+        try {
+            startObservation();
+            super.awaitNextInput();
+        } catch (RuntimeException error) { failure = error; throw error; }
+    }
+
+    @Override public Player chooseStartingPlayer(boolean isFirstGame) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingLand != null || pendingMana != null || activeMana != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            var request = new StartingPlayerDecision(player, observation, isFirstGame);
+            activeKind = "starting_player";
+            callback.before(request.data);
+            Player chosen = super.chooseStartingPlayer(isFirstGame);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode(chosen));
+            return chosen;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
     private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<DecisionRequest<T>> question,
             Supplier<R> original, Function<R, Iterable<T>> selected) {
         if (failure != null) { throw failure; }

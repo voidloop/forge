@@ -271,7 +271,14 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public List<Card> chooseCardsForSplice(SpellAbility sa, List<Card> cards) { throw unsupported("chooseCardsForSplice"); }
     @Override public CardCollectionView chooseCardsToRevealFromHand(int min, int max, CardCollectionView valid) { throw unsupported("chooseCardsToRevealFromHand"); }
     @Override public List<SpellAbility> chooseSaToActivateFromOpeningHand(List<SpellAbility> usableFromOpeningHand) { throw unsupported("chooseSaToActivateFromOpeningHand"); }
-    @Override public Player chooseStartingPlayer(boolean isFirstGame) { throw unsupported("chooseStartingPlayer"); }
+    @Override public Player chooseStartingPlayer(boolean isFirstGame) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new StartingPlayerDecision(player, observation, isFirstGame);
+            return request.apply(response(request.data));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public PlayerZone chooseStartingHand(List<PlayerZone> zones) { throw unsupported("chooseStartingHand"); }
     @Override public Mana chooseManaFromPool(List<Mana> manaChoices) { throw unsupported("chooseManaFromPool"); }
     @Override public String chooseSomeType(String kindOfType, SpellAbility sa, Collection<String> validTypes, boolean isOptional) {
@@ -397,7 +404,10 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin, SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal, String selectPrompt, boolean isOptional, Player decider) { throw unsupported("chooseSingleCardForZoneChange"); }
     @Override public List<Card> chooseCardsForZoneChange(ZoneType destination, List<ZoneType> origin, SpellAbility sa, CardCollection fetchList, int min, int max, DelayedReveal delayedReveal, String selectPrompt, Player decider) { throw unsupported("chooseCardsForZoneChange"); }
     @Override public void autoPassCancel() { throw unsupported("autoPassCancel"); }
-    @Override public void awaitNextInput() { throw unsupported("awaitNextInput"); }
+    @Override public void awaitNextInput() {
+        try { startObservation(); }
+        catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public void cancelAwaitNextInput() { throw unsupported("cancelAwaitNextInput"); }
 
     private final class Costs extends CostDecisionMakerBase {
