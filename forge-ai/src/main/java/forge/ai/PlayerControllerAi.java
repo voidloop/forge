@@ -59,9 +59,16 @@ public class PlayerControllerAi extends PlayerController {
     private boolean pilotsNonAggroDeck = false;
 
     public PlayerControllerAi(Game game, Player p, LobbyPlayer lp) {
-        super(game, p, lp);
+        this(game, p, lp, new AiController(p, game));
+    }
 
-        brains = new AiController(p, game);
+    /** Use a per-player AI extension while retaining the native controller workflow. */
+    protected PlayerControllerAi(Game game, Player p, LobbyPlayer lp, AiController ai) {
+        super(game, p, lp);
+        brains = Objects.requireNonNull(ai);
+        if (ai.getPlayer() != p || ai.getGame() != game) {
+            throw new IllegalArgumentException("AI must belong to this player and game");
+        }
     }
 
     public boolean pilotsNonAggroDeck() {
@@ -1244,7 +1251,7 @@ public class PlayerControllerAi extends PlayerController {
     public CardCollectionView chooseCardsForCost(CardCollectionView optionList, SpellAbility sa, CostPartWithList cpl, int amount, boolean isOptional, String prompt) {
         assert(false);
         //Untested placeholder. The AI does not currently pay like this.
-        return cpl.accept(new AiCostDecision(player, sa, true)).cards;
+        return cpl.accept(createAiCostDecision(player, sa, true, false)).cards;
     }
 
     @Override
@@ -1254,9 +1261,20 @@ public class PlayerControllerAi extends PlayerController {
         return ComputerUtilMana.payManaCost(toPay, ability, player, effect);
     }
 
+    /** Actual mana-source selection; affordability previews keep the static helper. */
+    public SpellAbility chooseManaAbilityForPayment(ManaCostBeingPaid cost, SpellAbility ability,
+            ManaCostShard shard, Collection<SpellAbility> options, boolean checkCosts) {
+        return ComputerUtilMana.chooseManaAbility(cost, ability, player, shard, options, checkCosts);
+    }
+
+    /** Override to observe native cost answers without replacing the payment algorithm. */
+    protected AiCostDecision createAiCostDecision(Player payer, SpellAbility ability, boolean effect, boolean payMana) {
+        return new AiCostDecision(payer, ability, effect, payMana);
+    }
+
     @Override
     public CostDecisionMakerBase getCostDecisionMaker(Player player, SpellAbility ability, boolean effect, String prompt) {
-        return new AiCostDecision(player, ability, effect);
+        return createAiCostDecision(player, ability, effect, false);
     }
 
     @Override
@@ -1267,7 +1285,7 @@ public class PlayerControllerAi extends PlayerController {
             }
 
             final CostPayment pay = new CostPayment(cost, sa);
-            return pay.payComputerCosts(new AiCostDecision(player, sa, true));
+            return pay.payComputerCosts(createAiCostDecision(player, sa, true, false));
         }
         return false;
     }
