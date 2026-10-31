@@ -134,6 +134,11 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         finally { activeAbility = null; activeKind = null; }
     }
 
+    @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
+        return record(null, "discard_cleanup", () -> CleanupDecision.create(player, observation, numDiscard),
+                () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), answer -> answer);
+    }
+
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         if (failure != null) { throw failure; }
         try {

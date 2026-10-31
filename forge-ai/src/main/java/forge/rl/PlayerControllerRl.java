@@ -265,7 +265,14 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) { throw unsupported("orderMoveToZoneList"); }
     @Override public CardCollectionView chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa, CardCollection validCards, int min, int max, CardCollectionView visibleToChooser) { throw unsupported("chooseCardsToDiscardFrom"); }
     @Override public CardCollectionView chooseCardsToDiscardUnlessType(int min, CardCollectionView hand, String[] unlessTypes, SpellAbility sa) { throw unsupported("chooseCardsToDiscardUnlessType"); }
-    @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) { throw unsupported("chooseCardsToDiscardToMaximumHandSize"); }
+    @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
+        checkActive();
+        try {
+            startObservation();
+            var request = CleanupDecision.create(player, observation, numDiscard);
+            return new CardCollection(request.apply(response(request.data)));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public CardCollectionView chooseCardsToDelve(int genericAmount, CardCollection grave) { throw unsupported("chooseCardsToDelve"); }
     @Override public Map<Card, ManaCostShard> chooseCardsForConvokeOrImprovise(SpellAbility sa, ManaCost manaCost, CardCollectionView untappedCards, boolean artifacts, boolean creatures, Integer maxReduction) { throw unsupported("chooseCardsForConvokeOrImprovise"); }
     @Override public List<Card> chooseCardsForSplice(SpellAbility sa, List<Card> cards) { throw unsupported("chooseCardsForSplice"); }
@@ -416,7 +423,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public String chooseCardName(SpellAbility sa, List<ICardFace> faces, String message) { throw unsupported("chooseCardName"); }
     @Override public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin, SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal, String selectPrompt, boolean isOptional, Player decider) { throw unsupported("chooseSingleCardForZoneChange"); }
     @Override public List<Card> chooseCardsForZoneChange(ZoneType destination, List<ZoneType> origin, SpellAbility sa, CardCollection fetchList, int min, int max, DelayedReveal delayedReveal, String selectPrompt, Player decider) { throw unsupported("chooseCardsForZoneChange"); }
-    @Override public void autoPassCancel() { throw unsupported("autoPassCancel"); }
+    @Override public void autoPassCancel() { checkActive(); }
     @Override public void awaitNextInput() {
         try { startObservation(); }
         catch (RuntimeException error) { throw stop(error); }
