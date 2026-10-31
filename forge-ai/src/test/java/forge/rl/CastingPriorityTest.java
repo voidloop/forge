@@ -104,6 +104,40 @@ public class CastingPriorityTest {
         }
     }
 
+    @Test public void partialCastRefundsPreviouslyUnusedManaAbilities() {
+        int[] executions = {0};
+        var callback = new IPlayerDecisionCallback() {
+            @Override public List<Integer> choose(Map<String, Object> request) {
+                var options = (Map<?, ?>) request.get("options");
+                if (options.get("kind").equals("mana_payment")) { return List.of(0, 1, 0, 0); }
+                var items = (List<?>) options.get("items");
+                for (int i = 0; i < items.size(); i++) {
+                    if ("cast_spell".equals(((Map<?, ?>) items.get(i)).get("type"))) { return List.of(i); }
+                }
+                throw new AssertionError("Expected native spell candidate");
+            }
+            @Override public void executed(Map<String, Object> value) {
+                var result = (Map<?, ?>) value.get("options");
+                assertEquals(result.get("reported"), false);
+                assertEquals(result.get("onStack"), false);
+                executions[0]++;
+            }
+        };
+        var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", callback), false);
+        f.lands().forEach(c -> c.getManaAbilities().get(0).setActivatingPlayer(null));
+        var controller = (PlayerControllerRl) f.player().getController();
+        try {
+            var selected = controller.chooseSpellAbilityToPlay();
+            assertFalse(controller.playChosenSpellAbility(selected.get(0)));
+            assertEquals(executions[0], 1);
+            assertTrue(f.game().getStack().isEmpty());
+            assertTrue(f.game().getCardState(f.spell().getHostCard()).isInZone(ZoneType.Hand));
+            assertTrue(f.lands().stream().noneMatch(Card::isTapped));
+            assertTrue(f.player().getManaPool().isEmpty());
+            assertTrue(f.spell().getPayingMana().isEmpty());
+        } finally { close(f); }
+    }
+
     @Test public void nativeCastingTeacherAndReplayKeepChoicePaymentAndResultSeparate() {
         for (boolean floating : List.of(false, true)) {
             var baseline = ManaPaymentBoundaryTest.fixture(new LobbyPlayerAi("first", null), floating);
@@ -237,6 +271,7 @@ public class CastingPriorityTest {
         test.nativeCastingTeacherAndReplayKeepChoicePaymentAndResultSeparate();
         test.clientCanPlayLandFloatBasicManaThenSpendItInNativeCast();
         test.exactVariantsStaleTimingAndCancelledCastStayExplicit();
+        test.partialCastRefundsPreviouslyUnusedManaAbilities();
         System.out.println("PASS: native priority casting, payment, resolution, returned priority and replay verified");
     }
 }

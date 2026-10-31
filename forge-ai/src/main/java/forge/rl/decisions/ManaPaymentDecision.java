@@ -235,16 +235,14 @@ public final class ManaPaymentDecision {
                 || card.getController() != player || card.isTapped()) {
             throw new IllegalArgumentException("Stale payment source");
         }
-        Player previous = ability.getActivatingPlayer();
         ability.setActivatingPlayer(player);
-        try {
-            CostTap tap = (CostTap) ability.getPayCosts().getCostParts().get(0);
-            if (!ability.canPlay() || !tap.canPay(ability, player, false)
-                    || !tap.payAsDecided(player, PaymentDecision.number(1), ability, false)) {
-                throw new IllegalStateException("Native payment activation rejected");
-            }
-            player.getGame().getStack().addAndUnfreeze(ability);
-            root.getPayingManaAbilities().add(ability);
-        } finally { ability.setActivatingPlayer(previous); }
+        CostTap tap = (CostTap) ability.getPayCosts().getCostParts().get(0);
+        if (!ability.canPlay() || !tap.canPay(ability, player, false)
+                || !tap.payAsDecided(player, PaymentDecision.number(1), ability, false)) {
+            throw new IllegalStateException("Native payment activation rejected");
+        }
+        player.getGame().getStack().addAndUnfreeze(ability);
+        // A real activation retains its payer: Forge's later rollback calls ability.undo().
+        root.getPayingManaAbilities().add(ability);
     }
 }

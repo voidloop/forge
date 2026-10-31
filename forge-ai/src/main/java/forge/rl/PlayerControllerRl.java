@@ -450,7 +450,11 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public String chooseProtectionType(SpellAbility sa, List<String> choices) { throw unsupported("chooseProtectionType"); }
     @Override public void revealAnte(String message, Multimap<Player, PaperCard> removedAnteCards) { throw unsupported("revealAnte"); }
     @Override public void revealAISkipCards(String message, Map<Player, Map<DeckSection, List<? extends PaperCard>>> deckCards) { throw unsupported("revealAISkipCards"); }
-    @Override public void revealUnsupported(Map<Player, List<PaperCard>> unsupported) { throw unsupported("revealUnsupported"); }
+    @Override public void revealUnsupported(Map<Player, List<PaperCard>> unsupported) {
+        checkActive();
+        // Match reports an empty unsupported-card list for every seat even in an ordinary game.
+        if (unsupported.values().stream().anyMatch(cards -> !cards.isEmpty())) { throw unsupported("revealUnsupported"); }
+    }
     @Override public List<OptionalCostValue> chooseOptionalCosts(SpellAbility choosen, List<OptionalCostValue> optionalCostValues) { throw unsupported("chooseOptionalCosts"); }
     @Override public List<CostPart> orderCosts(List<CostPart> costs) { throw unsupported("orderCosts"); }
     @Override public boolean payCostToPreventEffect(Cost cost, SpellAbility sa, boolean alreadyPaid, FCollectionView<Player> allPayers) { throw unsupported("payCostToPreventEffect"); }
