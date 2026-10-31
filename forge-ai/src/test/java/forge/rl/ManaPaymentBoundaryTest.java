@@ -87,7 +87,7 @@ public class ManaPaymentBoundaryTest {
         }
     }
 
-    private static Fixture fixture(LobbyPlayer lobby, boolean floating) {
+    static Fixture fixture(LobbyPlayer lobby, boolean floating) {
         MyRandom.setRandom(new Random(0));
         var seats = List.of(new RegisteredPlayer(new Deck("first")).setPlayer(lobby),
                 new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerRl("second", request -> {

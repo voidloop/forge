@@ -4,12 +4,16 @@ import forge.rl.decisions.BasicLandDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
+import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.StartingPlayerDecision;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
 import forge.card.ColorSet;
+import forge.card.mana.ManaCost;
+import forge.game.cost.CostPartMana;
+import forge.game.mana.ManaConversionMatrix;
 import forge.game.Game;
 import forge.game.GameEntity;
 import forge.game.card.CardCollectionView;
@@ -35,6 +39,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private BasicLandDecision.Choice pendingLand;
     private ManaDecision.Choice pendingMana;
     private ManaDecision.Choice activeMana;
+    private ManaPaymentDecision payment;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -215,6 +220,30 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
+    }
+
+    @Override public boolean payManaCost(ManaCost cost, CostPartMana part, SpellAbility ability,
+            String prompt, ManaConversionMatrix matrix, boolean effect) {
+        if (failure != null) { throw failure; }
+        if (cost.isZero() && (activeMana != null && activeMana.ability == ability
+                || payment != null && payment.isSource(ability))) {
+            try { return super.payManaCost(cost, part, ability, prompt, matrix, effect); }
+            catch (RuntimeException error) { failure = error; throw error; }
+        }
+        try {
+            if (payment != null || activeKind != null || activeMana != null || pendingLand != null || pendingMana != null) {
+                throw new UnsupportedOperationException("Nested teacher mana payment");
+            }
+            startObservation();
+            var request = new ManaPaymentDecision(player, observation, cost, part, ability, matrix, effect);
+            payment = request;
+            callback.before(request.data);
+            boolean paid = super.payManaCost(cost, part, ability, prompt, matrix, effect);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode(paid));
+            return paid;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { payment = null; }
     }
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,

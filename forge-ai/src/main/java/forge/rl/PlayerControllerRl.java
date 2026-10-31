@@ -4,6 +4,7 @@ import forge.rl.decisions.BasicLandDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
+import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.StartingPlayerDecision;
 
@@ -59,6 +60,8 @@ public final class PlayerControllerRl extends PlayerController {
     private BasicLandDecision.Choice pendingLand;
     private ManaDecision.Choice pendingMana;
     private ManaDecision.Choice activeMana;
+    private ManaPaymentDecision payment;
+    private SpellAbility paymentRoot;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
 
     private List<Integer> answer(Map<String, Object> options) {
@@ -416,10 +419,32 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public boolean payCostDuringRoll(Cost cost, SpellAbility sa) { throw unsupported("payCostDuringRoll"); }
     @Override public boolean payCombatCost(Card card, Cost cost, SpellAbility sa, String prompt) { throw unsupported("payCombatCost"); }
     @Override public boolean payManaCost(ManaCost toPay, CostPartMana costPartMana, SpellAbility sa, String prompt, ManaConversionMatrix matrix, boolean effect) {
-        requireActive(sa);
-        return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
+        checkActive();
+        if (toPay.isZero() && (active != null || activeMana != null)) {
+            requireActive(sa);
+            return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
+        }
+        try {
+            if (paymentRoot != null || active != null || activeMana != null || pendingLand != null || pendingMana != null) {
+                throw unsupported("nested mana payment");
+            }
+            startObservation();
+            payment = new ManaPaymentDecision(player, observation, toPay, costPartMana, sa, matrix, effect);
+            paymentRoot = sa;
+            if (toPay.isZero()) { return payment.apply(response(payment.data), new ManaCostBeingPaid(toPay)); }
+            return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
+        } catch (RuntimeException error) { throw stop(error); }
+        finally { payment = null; paymentRoot = null; }
     }
-    @Override public boolean applyManaToCost(ManaCostBeingPaid toPay, SpellAbility ability, String prompt, ManaConversionMatrix matrix, boolean effect) { throw unsupported("applyManaToCost"); }
+    @Override public boolean applyManaToCost(ManaCostBeingPaid toPay, SpellAbility ability, String prompt, ManaConversionMatrix matrix, boolean effect) {
+        checkActive();
+        try {
+            if (payment == null || paymentRoot != ability || effect) { throw unsupported("unbound mana payment"); }
+            ManaPaymentDecision request = payment;
+            payment = null;
+            return request.apply(response(request.data), toPay);
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public CardCollectionView chooseCardsForCost(CardCollectionView optionList, SpellAbility sa, CostPartWithList cpl, int amount, boolean isOptional, String prompt) { throw unsupported("chooseCardsForCost"); }
     @Override public CostDecisionMakerBase getCostDecisionMaker(Player player, SpellAbility ability, boolean effect, String prompt) {
         requireActive(ability);
