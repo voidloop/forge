@@ -1715,13 +1715,9 @@ public class AiController {
                 }
             }
             // TODO mark some as skipped to increase chance to find something playable next priority
-            onEvaluationFailure(e);
             return null;
         }
     }
-
-    /** Allows recorders to distinguish failed evaluation from a voluntary pass. */
-    protected void onEvaluationFailure(Exception failure) { }
 
     public CardCollection chooseCardsToDelve(int genericCost, CardCollection grave) {
         CardCollection toExile = new CardCollection();
