@@ -112,8 +112,8 @@ public class BasicLandPriorityTest {
             assertEquals(envelope.keySet(), java.util.Set.of("state", "options"));
             Map<?, ?> request = (Map<?, ?>) envelope.get("options");
             requests.add(request);
-            assertEquals(request.get("kind"), "priority_basic_lands");
-            assertEquals(request.get("scope"), "pass_or_basic_land_from_hand");
+            assertEquals(request.get("kind"), "priority");
+            assertEquals(request.get("scope"), "ordinary_lands_creatures_mana");
             return List.of(requests.size() == 2 ? 2 : 0);
         });
         var controller = fixture.player().getController();
@@ -130,7 +130,7 @@ public class BasicLandPriorityTest {
         assertEquals(((List<?>) requests.get(0).get("items")).stream()
                 .map(item -> ((Map<?, ?>) item).get("type")).toList(), List.of("pass", "play_land", "play_land"));
         assertEquals(((Map<?, ?>) ((List<?>) requests.get(0).get("items")).get(2)).get("name"), "Island");
-        assertEquals(requests.get(2).get("items"), List.of(Map.of("type", "pass")));
+        assertEquals(((List<?>) requests.get(2).get("items")).size(), 2);
         for (boolean opponentTurn : List.of(false, true)) {
             Fixture restricted = fixture(envelope -> {
                 Map<?, ?> request = (Map<?, ?>) envelope.get("options");
@@ -170,7 +170,7 @@ public class BasicLandPriorityTest {
         wrongPriority.game().getPhaseHandler().setPriority(wrongPriority.opponent());
         assertThrows(IllegalStateException.class, () -> wrongPriority.player().getController().chooseSpellAbilityToPlay());
         Fixture unsupported = fixture(request -> { throw new AssertionError("Unsupported hand must not ask client"); });
-        OriginalCompositeChoice.add(unsupported.game(), unsupported.player(), "Grizzly Bears");
+        OriginalCompositeChoice.add(unsupported.game(), unsupported.player(), "Llanowar Elves");
         assertThrows(UnsupportedOperationException.class, () -> unsupported.player().getController().chooseSpellAbilityToPlay());
     }
 

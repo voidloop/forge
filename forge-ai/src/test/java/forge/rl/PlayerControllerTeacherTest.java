@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.BasicLandDecision;
+import forge.rl.decisions.PriorityDecision;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -190,7 +190,7 @@ public class PlayerControllerTeacherTest {
 
         Recording unsupported = new Recording();
         var bad = priorityFixture(new LobbyPlayerTeacher("first", unsupported), 0);
-        OriginalCompositeChoice.add(bad.game(), bad.player(), "Grizzly Bears");
+        OriginalCompositeChoice.add(bad.game(), bad.player(), "Llanowar Elves");
         assertThrows(UnsupportedOperationException.class, () -> bad.player().getController().chooseSpellAbilityToPlay());
         assertTrue(unsupported.entries.isEmpty());
         assertNull(unsupported.pending);
@@ -209,7 +209,7 @@ public class PlayerControllerTeacherTest {
         var fixture = priorityFixture(new LobbyPlayerAi("first", null), 0);
         var ability = fixture.forest().getFirstSpellAbility();
         var activator = ability.getActivatingPlayer();
-        BasicLandDecision question = new BasicLandDecision(fixture.player(), new StateReader(fixture.player(), 0L));
+        PriorityDecision question = new PriorityDecision(fixture.player(), new StateReader(fixture.player(), 0L));
         assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
         assertThrows(IllegalArgumentException.class, () -> question.encode(List.of()));
         assertThrows(IllegalArgumentException.class, () -> question.encode(List.of(choice.get(0))));

@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.BasicLandDecision;
+import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -36,7 +36,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private final StateReader observation;
     private boolean observationStarted;
     private RuntimeException failure;
-    private BasicLandDecision.Choice pendingLand;
+    private PriorityDecision.Choice pendingPriority;
+    private PriorityDecision.Choice activePriority;
     private ManaDecision.Choice pendingMana;
     private ManaDecision.Choice activeMana;
     private ManaPaymentDecision payment;
@@ -71,7 +72,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
         if (failure != null) { throw failure; }
         try {
-            if (activeKind != null || pendingLand != null || pendingMana != null || activeMana != null) {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
@@ -154,7 +155,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         if (failure != null) { throw failure; }
         try {
-            if (activeKind != null || pendingLand != null || pendingMana != null || activeMana != null) {
+            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
@@ -169,13 +170,13 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 callback.after(answer);
                 return chosen;
             }
-            BasicLandDecision request = new BasicLandDecision(player, observation);
-            activeKind = "priority_basic_lands";
+            PriorityDecision request = new PriorityDecision(player, observation);
+            activeKind = "priority";
             callback.before(request.data);
             List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
             if (failure != null) { throw failure; }
             List<Integer> answer = request.encode(chosen);
-            if (chosen != null) { pendingLand = new BasicLandDecision.Choice(chosen.get(0), chosen.get(0).getHostCard()); }
+            pendingPriority = request.apply(answer);
             callback.after(answer);
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
@@ -196,15 +197,19 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             } catch (RuntimeException error) { failure = error; throw error; }
             finally { activeMana = null; }
         }
-        BasicLandDecision.Choice choice = pendingLand;
-        pendingLand = null;
+        activePriority = pendingPriority;
+        pendingPriority = null;
         try {
-            if (choice == null) { throw new IllegalArgumentException("Unbound teacher land action"); }
-            int played = choice.before(player, ability);
+            if (activePriority == null) { throw new IllegalArgumentException("Unbound teacher priority action"); }
+            activePriority.before(player, ability);
+            if (activePriority.isCast()) { callback.beginExecution(); }
             boolean reported = super.playChosenSpellAbility(ability);
-            choice.after(player, played, reported);
+            if (failure != null) { throw failure; }
+            activePriority.after(player, reported);
+            if (activePriority.isCast()) { callback.executed(activePriority.result(player, observation, reported)); }
             return reported;
         } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activePriority = null; }
     }
 
     @Override public byte chooseColor(String message, SpellAbility ability, ColorSet colors) {
@@ -225,13 +230,14 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public boolean payManaCost(ManaCost cost, CostPartMana part, SpellAbility ability,
             String prompt, ManaConversionMatrix matrix, boolean effect) {
         if (failure != null) { throw failure; }
-        if (cost.isZero() && (activeMana != null && activeMana.ability == ability
+        if (cost.isZero() && (activePriority != null && activePriority.isMana() && activePriority.ability == ability
+                || activeMana != null && activeMana.ability == ability
                 || payment != null && payment.isSource(ability))) {
             try { return super.payManaCost(cost, part, ability, prompt, matrix, effect); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
         try {
-            if (payment != null || activeKind != null || activeMana != null || pendingLand != null || pendingMana != null) {
+            if (payment != null || activeKind != null || activeMana != null || pendingPriority != null || pendingMana != null) {
                 throw new UnsupportedOperationException("Nested teacher mana payment");
             }
             startObservation();

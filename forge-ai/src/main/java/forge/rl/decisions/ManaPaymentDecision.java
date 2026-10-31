@@ -40,7 +40,7 @@ public final class ManaPaymentDecision {
         this.root = root;
         this.cost = cost;
         var game = player.getGame();
-        // shortcut: unmodified fixed-cost creature and ordinary basic lands; extend with the casting goal.
+        // shortcut: unmodified fixed-cost vanilla creatures and ordinary basic lands; extend with later cost families.
         Card host = root.getHostCard();
         if (game.getAge() != GameStage.Play || game.isGameOver() || root.getActivatingPlayer() != player
                 || host.getGame() != game || host.isFaceDown() || !host.getView().canBeShownTo(player.getView())
@@ -67,6 +67,7 @@ public final class ManaPaymentDecision {
         identityMatrix(player.getManaPool());
         if (matrix != null) { identityMatrix(matrix); }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
+            if (card.isCreature() && !card.isFaceDown()) { PriorityDecision.requireCreature(card); continue; }
             if (!card.isBasicLand() || card.isSnow() || card.isFaceDown()
                     || !card.getView().canBeShownTo(player.getView())
                     || !card.getTriggers().isEmpty() || !card.getStaticAbilities().isEmpty()
@@ -101,6 +102,8 @@ public final class ManaPaymentDecision {
             }
             initial.add(index);
         }
+        // Pool iteration can change during native AI evaluation; options identify units by bound source.
+        initial.sort(Integer::compareTo);
         List<Map<String, Object>> items = new ArrayList<>();
         for (int i = 0; i < sources.size(); i++) {
             SpellAbility ability = sources.get(i);

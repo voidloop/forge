@@ -7,7 +7,10 @@ import java.util.Map;
 public interface IDecisionRecordCallback {
     void before(Map<String, Object> request);
     void after(List<Integer> answer);
+    default void beginExecution() { }
     /** Internal lifecycle: bind Python memory after game setup, before choices. */
     default void observe(StateReader reader) { }
     default void close() { }
+    /** Detached native execution facts, separate from client/teacher answers. */
+    default void executed(Map<String, Object> result) { }
 }

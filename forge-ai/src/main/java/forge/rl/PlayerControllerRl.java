@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.BasicLandDecision;
+import forge.rl.decisions.PriorityDecision;
 import forge.rl.decisions.CleanupDecision;
 import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.ManaDecision;
@@ -57,7 +57,8 @@ public final class PlayerControllerRl extends PlayerController {
     private boolean observationStarted;
     private RuntimeException failure;
     private Prepared active;
-    private BasicLandDecision.Choice pendingLand;
+    private PriorityDecision.Choice pendingPriority;
+    private PriorityDecision.Choice activePriority;
     private ManaDecision.Choice pendingMana;
     private ManaDecision.Choice activeMana;
     private ManaPaymentDecision payment;
@@ -109,7 +110,8 @@ public final class PlayerControllerRl extends PlayerController {
 
     private void requireActive(SpellAbility ability) {
         checkActive();
-        if ((active == null || active.root() != ability) && (activeMana == null || activeMana.ability != ability)) {
+        if ((active == null || active.root() != ability) && (activeMana == null || activeMana.ability != ability)
+                && (activePriority == null || activePriority.ability != ability)) {
             throw unsupported("unbound spell execution");
         }
     }
@@ -150,7 +152,8 @@ public final class PlayerControllerRl extends PlayerController {
 
     @Override public SpellAbility getAbilityToPlay(Card hostCard, List<SpellAbility> abilities, ITriggerEvent triggerEvent) {
         checkActive();
-        SpellAbility bound = activeMana != null ? activeMana.ability : active == null ? null : active.root();
+        SpellAbility bound = activePriority != null ? activePriority.ability
+                : activeMana != null ? activeMana.ability : active == null ? null : active.root();
         if (bound == null || abilities.size() != 1 || abilities.get(0) != bound) {
             throw unsupported("getAbilityToPlay alternatives");
         }
@@ -331,7 +334,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         checkActive();
         try {
-            if (pendingLand != null || pendingMana != null || activeMana != null) {
+            if (pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
@@ -340,9 +343,9 @@ public final class PlayerControllerRl extends PlayerController {
                 pendingMana = request.apply(response(request.data), player);
                 return pendingMana == null ? null : List.of(pendingMana.ability);
             }
-            BasicLandDecision request = new BasicLandDecision(player, observation);
-            pendingLand = request.apply(response(request.data));
-            return pendingLand == null ? null : List.of(pendingLand.ability());
+            PriorityDecision request = new PriorityDecision(player, observation);
+            pendingPriority = request.apply(response(request.data));
+            return pendingPriority == null ? null : List.of(pendingPriority.ability);
         } catch (RuntimeException error) { throw stop(error); }
     }
 
@@ -359,15 +362,17 @@ public final class PlayerControllerRl extends PlayerController {
             } catch (RuntimeException error) { throw stop(error); }
             finally { activeMana = null; }
         }
-        BasicLandDecision.Choice choice = pendingLand;
-        pendingLand = null;
+        activePriority = pendingPriority;
+        pendingPriority = null;
         try {
-            if (choice == null) { throw new IllegalArgumentException("Unbound land action"); }
-            int played = choice.before(player, sa);
+            if (activePriority == null) { throw new IllegalArgumentException("Unbound priority action"); }
+            activePriority.before(player, sa);
             boolean reported = PlaySpellAbility.playSpellAbility(this, player, sa);
-            choice.after(player, played, reported);
+            activePriority.after(player, reported);
+            if (activePriority.isCast()) { callback.executed(activePriority.result(player, observation, reported)); }
             return reported;
         } catch (RuntimeException error) { throw stop(error); }
+        finally { activePriority = null; }
     }
     @Override public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
         requireActive(sa);
@@ -420,12 +425,13 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public boolean payCombatCost(Card card, Cost cost, SpellAbility sa, String prompt) { throw unsupported("payCombatCost"); }
     @Override public boolean payManaCost(ManaCost toPay, CostPartMana costPartMana, SpellAbility sa, String prompt, ManaConversionMatrix matrix, boolean effect) {
         checkActive();
-        if (toPay.isZero() && (active != null || activeMana != null)) {
+        if (toPay.isZero() && (active != null || activeMana != null
+                || activePriority != null && activePriority.isMana())) {
             requireActive(sa);
             return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
         }
         try {
-            if (paymentRoot != null || active != null || activeMana != null || pendingLand != null || pendingMana != null) {
+            if (paymentRoot != null || active != null || activeMana != null || pendingPriority != null || pendingMana != null) {
                 throw unsupported("nested mana payment");
             }
             startObservation();
@@ -494,7 +500,8 @@ public final class PlayerControllerRl extends PlayerController {
         @Override public PaymentDecision visit(CostPutCardToLib cost) { throw unsupported("cost CostPutCardToLib"); }
         @Override public PaymentDecision visit(CostTap cost) {
             requireActive(ability);
-            if (activeMana == null || activeMana.ability != ability) { throw unsupported("cost CostTap"); }
+            if ((activeMana == null || activeMana.ability != ability)
+                    && (activePriority == null || !activePriority.isMana() || activePriority.ability != ability)) { throw unsupported("cost CostTap"); }
             return PaymentDecision.number(1);
         }
         @Override public PaymentDecision visit(CostSacrifice cost) { throw unsupported("cost CostSacrifice"); }

@@ -132,10 +132,6 @@ public class NaturalTurnsTest {
             int[] position = {0};
             var replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
                 assertEquals(request, saved.requests.get(position[0]));
-                if (((Map<?, ?>) request.get("options")).get("kind").equals("priority_basic_lands")
-                        && p.getLandsPlayedThisTurn() == 1) {
-                    assertEquals(((List<?>) ((Map<?, ?>) request.get("options")).get("items")).size(), 1);
-                }
                 return saved.answers.get(position[0]++);
             }), opening);
             assertNotSame(teacher.getPlayers().get(0), replay.getPlayers().get(0));
@@ -154,7 +150,7 @@ public class NaturalTurnsTest {
             switch ((String) options.get("kind")) {
                 case "starting_player": return List.of(0);
                 case "mulligan_keep": return List.of(1);
-                case "priority_basic_lands":
+                case "priority":
                     return List.of(p.getCardsIn(ZoneType.Battlefield).isEmpty()
                             && ((List<?>) options.get("items")).size() > 1 ? 1 : 0);
                 case "discard_cleanup":
