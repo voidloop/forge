@@ -126,10 +126,10 @@ public final class OriginalCompositeChoice {
         }
     }
 
-    private record Fixture(Game game, Player player, Spell offered, SpellAbility target) { }
-    private record Outcome(List<Object> before, List<Object> stack, List<Object> resolved, long rngAfter) { }
+    record Fixture(Game game, Player player, Spell offered, SpellAbility target) { }
+    record Outcome(List<Object> before, List<Object> stack, List<Object> resolved, long rngAfter) { }
 
-    private static Fixture fixture(String role, Choice answer) {
+    static Fixture fixture(String role, Choice answer) {
         MyRandom.setRandom(new Random(0));
         LobbyPlayerAi actor = role.equals("baseline") ? new LobbyPlayerAi("first", null)
                 : new LobbyPlayerAi("first", null) {
@@ -161,7 +161,7 @@ public final class OriginalCompositeChoice {
         return new Fixture(game, player, offered, target);
     }
 
-    private static Card add(Game game, Player player, String name) {
+    static Card add(Game game, Player player, String name) {
         Card card = CardFactory.getCard(StaticData.instance().getCommonCards().getCard(name), player, game);
         player.getZone(ZoneType.Hand).add(card);
         return card;
@@ -174,7 +174,7 @@ public final class OriginalCompositeChoice {
     }
 
     /** Fixture-only public facts, with stack identities represented by their current positions. */
-    private static List<Object> observe(Game game) {
+    static List<Object> observe(Game game) {
         List<Object> state = new ArrayList<>();
         List<Player> seats = game.getRegisteredPlayers();
         state.add(List.of(game.getPhaseHandler().getPhase(), game.getPhaseHandler().getTurn(),
@@ -212,7 +212,7 @@ public final class OriginalCompositeChoice {
         return List.copyOf(state);
     }
 
-    private static Outcome execute(Fixture fixture) {
+    static Outcome execute(Fixture fixture) {
         List<Object> before = observe(fixture.game());
         require(fixture.player().getController().playSaFromPlayEffect(fixture.offered()), "Cast failed");
         require(fixture.offered().getChosenList().size() == 1
@@ -232,15 +232,7 @@ public final class OriginalCompositeChoice {
         if (!condition) { throw new AssertionError(message); }
     }
 
-    public static void main(String[] args) throws Exception {
-        Path forge = Path.of(args[0]).toRealPath();
-        for (var entry : Map.of(AiController.class, "forge-ai", PlayerControllerAi.class, "forge-ai",
-                Game.class, "forge-game", MyRandom.class, "forge-core").entrySet()) {
-            Path loaded = Path.of(entry.getKey().getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
-            require(loaded.equals(forge.resolve(entry.getValue() + "/target/classes").toRealPath()),
-                    "Engine class loaded outside original build: " + loaded);
-            System.out.println("ORIGIN " + entry.getKey().getName() + " " + loaded);
-        }
+    static void initialize(Path forge) {
         String res = forge.resolve("forge-gui/res").toString() + "/";
         Lang.createInstance("en-US");
         Localizer.getInstance().initialize("en-US", res + "languages");
@@ -251,6 +243,19 @@ public final class OriginalCompositeChoice {
                 new CardStorageReader(res + "tokenscripts/", null, false), null, null,
                 res + "editions", forge.resolve("forge-ai/target/custom-editions").toString(),
                 res + "blockdata", res + "setlookup", "Latest Art All Editions", true, false, false, false);
+
+    }
+
+    public static void main(String[] args) throws Exception {
+        Path forge = Path.of(args[0]).toRealPath();
+        for (var entry : Map.of(AiController.class, "forge-ai", PlayerControllerAi.class, "forge-ai",
+                Game.class, "forge-game", MyRandom.class, "forge-core").entrySet()) {
+            Path loaded = Path.of(entry.getKey().getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
+            require(loaded.equals(forge.resolve(entry.getValue() + "/target/classes").toRealPath()),
+                    "Engine class loaded outside original build: " + loaded);
+            System.out.println("ORIGIN " + entry.getKey().getName() + " " + loaded);
+        }
+        initialize(forge);
 
         Outcome baseline = execute(fixture("baseline", null));
         Fixture teacher = fixture("teacher", null);
