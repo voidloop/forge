@@ -50,6 +50,8 @@ public final class PlayerControllerRl extends PlayerController {
     private RuntimeException failure;
     private Prepared active;
     private BasicLandDecision.Choice pendingLand;
+    private ManaDecision.Choice pendingMana;
+    private ManaDecision.Choice activeMana;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
 
     private List<Integer> answer(Map<String, Object> options) {
@@ -63,7 +65,9 @@ public final class PlayerControllerRl extends PlayerController {
     private List<Integer> response(Map<String, Object> request) {
         checkActive();
         try {
-            List<Integer> values = List.copyOf(Objects.requireNonNull(callback.choose(request), "Missing client response"));
+            List<Integer> received = callback.choose(request);
+            checkActive();
+            List<Integer> values = List.copyOf(Objects.requireNonNull(received, "Missing client response"));
             for (Object value : values) {
                 if (!(value instanceof Integer)) { throw new IllegalArgumentException("Client response must contain integers"); }
             }
@@ -95,7 +99,9 @@ public final class PlayerControllerRl extends PlayerController {
 
     private void requireActive(SpellAbility ability) {
         checkActive();
-        if (active == null || active.root() != ability) { throw unsupported("unbound spell execution"); }
+        if ((active == null || active.root() != ability) && (activeMana == null || activeMana.ability != ability)) {
+            throw unsupported("unbound spell execution");
+        }
     }
 
 
@@ -134,10 +140,11 @@ public final class PlayerControllerRl extends PlayerController {
 
     @Override public SpellAbility getAbilityToPlay(Card hostCard, List<SpellAbility> abilities, ITriggerEvent triggerEvent) {
         checkActive();
-        if (active == null || abilities.size() != 1 || abilities.get(0) != active.root()) {
+        SpellAbility bound = activeMana != null ? activeMana.ability : active == null ? null : active.root();
+        if (bound == null || abilities.size() != 1 || abilities.get(0) != bound) {
             throw unsupported("getAbilityToPlay alternatives");
         }
-        return active.root();
+        return bound;
     }
     @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) { throw unsupported("playSpellAbilityNoStack"); }
     @Override public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> activePlayerSAs) { throw unsupported("orderSimultaneousSa"); }
@@ -246,7 +253,12 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public CardCollection orderAttackers(Card blocker, CardCollection attackers) { throw unsupported("orderAttackers"); }
     @Override public void reveal(CardCollectionView cards, ZoneType zone, Player owner, String messagePrefix, boolean addMsgSuffix) { throw unsupported("reveal"); }
     @Override public void reveal(List<CardView> cards, ZoneType zone, PlayerView owner, String messagePrefix, boolean addMsgSuffix) { throw unsupported("reveal"); }
-    @Override public void notifyOfValue(SpellAbility saSource, GameObject realtedTarget, String value) { throw unsupported("notifyOfValue"); }
+    @Override public void notifyOfValue(SpellAbility saSource, GameObject realtedTarget, String value) {
+        checkActive();
+        // Mana announcements ask no question; the resulting pool is read from native state.
+        if (saSource == null || !ManaDecision.supported(saSource)
+                || !observation.canIdentify(saSource.getHostCard().getView())) { throw unsupported("notifyOfValue"); }
+    }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) { throw unsupported("arrangeForScry"); }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForSurveil(CardCollection topN) { throw unsupported("arrangeForSurveil"); }
     @Override public boolean willPutCardOnTop(Card c) { throw unsupported("willPutCardOnTop"); }
@@ -282,8 +294,15 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         checkActive();
         try {
-            if (pendingLand != null) { throw new IllegalStateException("Previous land choice has not been executed"); }
+            if (pendingLand != null || pendingMana != null || activeMana != null) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
+            if (ManaDecision.hasSource(player)) {
+                ManaDecision request = new ManaDecision(player, observation);
+                pendingMana = request.apply(response(request.data), player);
+                return pendingMana == null ? null : List.of(pendingMana.ability);
+            }
             BasicLandDecision request = new BasicLandDecision(player, observation);
             pendingLand = request.apply(response(request.data));
             return pendingLand == null ? null : List.of(pendingLand.ability());
@@ -292,6 +311,17 @@ public final class PlayerControllerRl extends PlayerController {
 
     @Override public boolean playChosenSpellAbility(SpellAbility sa) {
         checkActive();
+        if (pendingMana != null) {
+            activeMana = pendingMana;
+            pendingMana = null;
+            try {
+                activeMana.before(player, sa);
+                boolean reported = PlaySpellAbility.playSpellAbility(this, player, sa);
+                activeMana.after(player, reported);
+                return reported;
+            } catch (RuntimeException error) { throw stop(error); }
+            finally { activeMana = null; }
+        }
         BasicLandDecision.Choice choice = pendingLand;
         pendingLand = null;
         try {
@@ -304,7 +334,7 @@ public final class PlayerControllerRl extends PlayerController {
     }
     @Override public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
         requireActive(sa);
-        if (min != 1 || num != 1 || !possible.contains(active.mode())) { throw unsupported("changed modes"); }
+        if (active == null || min != 1 || num != 1 || !possible.contains(active.mode())) { throw unsupported("changed modes"); }
         List<AbilitySub> chosen = new ArrayList<>(List.of(active.mode()));
         sa.setChosenList(chosen);
         return chosen;
@@ -323,7 +353,14 @@ public final class PlayerControllerRl extends PlayerController {
         return binary("binary", question, kindOfChoice.name());
     }
     @Override public boolean chooseFlipResult(SpellAbility sa, Player flipper, boolean call) { throw unsupported("chooseFlipResult"); }
-    @Override public byte chooseColor(String message, SpellAbility sa, ColorSet colors) { throw unsupported("chooseColor"); }
+    @Override public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
+        checkActive();
+        try {
+            if (activeMana == null) { throw unsupported("unbound mana color"); }
+            var request = activeMana.colorRequest(player, observation, message, sa, colors);
+            return activeMana.applyColor(response(request));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public byte chooseColorAllowColorless(String message, Card c, ColorSet colors) { throw unsupported("chooseColorAllowColorless"); }
     @Override public ColorSet chooseColors(String message, SpellAbility sa, int min, int max, ColorSet options) { throw unsupported("chooseColors"); }
     @Override public ICardFace chooseSingleCardFace(SpellAbility sa, String message, Predicate<ICardFace> cpp, String name) { throw unsupported("chooseSingleCardFace"); }
@@ -393,7 +430,11 @@ public final class PlayerControllerRl extends PlayerController {
         @Override public PaymentDecision visit(CostPartMana cost) { checkActive(); return PaymentDecision.number(0); }
         @Override public PaymentDecision visit(CostPromiseGift cost) { throw unsupported("cost CostPromiseGift"); }
         @Override public PaymentDecision visit(CostPutCardToLib cost) { throw unsupported("cost CostPutCardToLib"); }
-        @Override public PaymentDecision visit(CostTap cost) { throw unsupported("cost CostTap"); }
+        @Override public PaymentDecision visit(CostTap cost) {
+            requireActive(ability);
+            if (activeMana == null || activeMana.ability != ability) { throw unsupported("cost CostTap"); }
+            return PaymentDecision.number(1);
+        }
         @Override public PaymentDecision visit(CostSacrifice cost) { throw unsupported("cost CostSacrifice"); }
         @Override public PaymentDecision visit(CostReturn cost) { throw unsupported("cost CostReturn"); }
         @Override public PaymentDecision visit(CostReveal cost) { throw unsupported("cost CostReveal"); }

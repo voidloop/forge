@@ -2,6 +2,7 @@ package forge.rl;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
+import forge.card.ColorSet;
 import forge.game.Game;
 import forge.game.GameEntity;
 import forge.game.card.CardCollectionView;
@@ -16,7 +17,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Records final supported selections and pass/basic-land priority through the public API. */
+/** Records supported final decisions, including subordinate mana colors, through the public API. */
 public final class PlayerControllerTeacher extends PlayerControllerAi {
     private final IDecisionRecordCallback callback;
     private SpellAbility activeAbility;
@@ -25,6 +26,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private boolean observationStarted;
     private RuntimeException failure;
     private BasicLandDecision.Choice pendingLand;
+    private ManaDecision.Choice pendingMana;
+    private ManaDecision.Choice activeMana;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -76,10 +79,21 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         if (failure != null) { throw failure; }
         try {
-            if (activeKind != null || pendingLand != null) {
+            if (activeKind != null || pendingLand != null || pendingMana != null || activeMana != null) {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
+            if (ManaDecision.hasSource(player)) {
+                ManaDecision request = new ManaDecision(player, observation);
+                activeKind = "priority_mana";
+                callback.before(request.data);
+                List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
+                if (failure != null) { throw failure; }
+                List<Integer> answer = request.encode(chosen);
+                pendingMana = chosen == null ? null : request.selected();
+                callback.after(answer);
+                return chosen;
+            }
             BasicLandDecision request = new BasicLandDecision(player, observation);
             activeKind = "priority_basic_lands";
             callback.before(request.data);
@@ -95,6 +109,18 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public boolean playChosenSpellAbility(SpellAbility ability) {
         if (failure != null) { throw failure; }
+        if (pendingMana != null) {
+            activeMana = pendingMana;
+            pendingMana = null;
+            try {
+                activeMana.before(player, ability);
+                boolean reported = super.playChosenSpellAbility(ability);
+                if (failure != null) { throw failure; }
+                activeMana.after(player, reported);
+                return reported;
+            } catch (RuntimeException error) { failure = error; throw error; }
+            finally { activeMana = null; }
+        }
         BasicLandDecision.Choice choice = pendingLand;
         pendingLand = null;
         try {
@@ -104,6 +130,21 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             choice.after(player, played, reported);
             return reported;
         } catch (RuntimeException error) { failure = error; throw error; }
+    }
+
+    @Override public byte chooseColor(String message, SpellAbility ability, ColorSet colors) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeMana == null || activeKind != null) { throw new UnsupportedOperationException("Unbound teacher mana color"); }
+            var request = activeMana.colorRequest(player, observation, message, ability, colors);
+            activeKind = "mana_color";
+            callback.before(request);
+            byte chosen = super.chooseColor(message, ability, colors);
+            if (failure != null) { throw failure; }
+            callback.after(activeMana.encodeColor(chosen));
+            return chosen;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
     }
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
