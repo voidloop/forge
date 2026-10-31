@@ -30,14 +30,6 @@ public class AiCostDecision extends CostDecisionMakerBase {
     private final CardCollection discarded;
     private final CardCollection tapped;
 
-    /** Uses the payer's AI extension for payment choices; previews keep the plain constructor. */
-    public static AiCostDecision forPayment(Player payer, SpellAbility ability, boolean effect, boolean payMana) {
-        if (payer.getController() instanceof PlayerControllerAi controller) {
-            return controller.createAiCostDecision(payer, ability, effect, payMana);
-        }
-        return new AiCostDecision(payer, ability, effect, payMana);
-    }
-
     public AiCostDecision(Player ai0, SpellAbility sa, final boolean effect) {
         this(ai0, sa, effect, false);
     }
