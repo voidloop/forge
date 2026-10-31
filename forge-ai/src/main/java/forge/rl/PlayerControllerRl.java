@@ -45,6 +45,8 @@ import forge.game.ability.effects.CharmEffect;
 /** Independent client controller. Unsupported requests terminate this session. */
 public final class PlayerControllerRl extends PlayerController {
     private final IPlayerDecisionCallback callback;
+    private final StateReader observation;
+    private boolean observationStarted;
     private RuntimeException failure;
     private Prepared active;
     private LandChoice pendingLand;
@@ -74,7 +76,8 @@ public final class PlayerControllerRl extends PlayerController {
             int min, int max, boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         checkActive();
         try {
-            SelectionRequest<T> request = new SelectionRequest<>(player, kind, options, title, min, max, optional, reveal, related, params);
+            startObservation();
+            SelectionRequest<T> request = new SelectionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
             return request.apply(answer(request.data));
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -92,6 +95,21 @@ public final class PlayerControllerRl extends PlayerController {
     public PlayerControllerRl(Game game, Player player, LobbyPlayer lobby, IPlayerDecisionCallback callback) {
         super(game, player, lobby);
         this.callback = Objects.requireNonNull(callback);
+        // Private replay setup: observable aliases follow the same visible history, never engine RNG.
+        this.observation = new StateReader(player, 0L);
+    }
+
+    public void startObservation() {
+        if (failure != null) { throw failure; }
+        if (!observationStarted) { callback.observe(observation); observationStarted = true; }
+    }
+
+    public void closeObservation() {
+        try { callback.close(); }
+        finally {
+            observation.close();
+            if (failure == null) { failure = new IllegalStateException("Controller observation is closed"); }
+        }
     }
 
     private void checkActive() {

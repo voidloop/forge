@@ -21,11 +21,28 @@ public final class PlayerControllerSelectionTeacher extends PlayerControllerAi {
     private final ISelectionRecordCallback callback;
     private SpellAbility activeAbility;
     private String activeKind;
+    private final StateReader observation;
+    private boolean observationStarted;
     private RuntimeException failure;
 
     public PlayerControllerSelectionTeacher(Game game, Player player, LobbyPlayerAi lobby, ISelectionRecordCallback callback) {
         super(game, player, lobby);
         this.callback = Objects.requireNonNull(callback);
+        // Private replay setup: observable aliases follow the same visible history, never engine RNG.
+        this.observation = new StateReader(player, 0L);
+    }
+
+    public void startObservation() {
+        if (failure != null) { throw failure; }
+        if (!observationStarted) { callback.observe(observation); observationStarted = true; }
+    }
+
+    public void closeObservation() {
+        try { callback.close(); }
+        finally {
+            observation.close();
+            if (failure == null) { failure = new IllegalStateException("Controller observation is closed"); }
+        }
     }
 
     private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<SelectionRequest<T>> question,
@@ -43,6 +60,7 @@ public final class PlayerControllerSelectionTeacher extends PlayerControllerAi {
         activeAbility = ability;
         activeKind = kind;
         try {
+            startObservation();
             SelectionRequest<T> request = question.get();
             callback.before(request.data);
             R result = original.get();
@@ -55,20 +73,20 @@ public final class PlayerControllerSelectionTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return record(sa, "single_entity", () -> new SelectionRequest<>(player, "single_entity", options, title, 1, 1, optional, reveal, related, params),
+        return record(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params),
                 answer -> answer == null ? List.of() : List.of(answer));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return record(sa, "cards", () -> new SelectionRequest<>(player, "cards", options, title, min, max, optional, null, null, params),
+        return record(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), answer -> answer);
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return record(sa, "entities", () -> new SelectionRequest<>(player, "entities", options, title, min, max, min == 0, reveal, related, params),
+        return record(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), answer -> answer);
     }
 }

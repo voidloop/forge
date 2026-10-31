@@ -145,7 +145,7 @@ final class ObservationReader {
 
     private static List<Object> stack(Game game, StateReader view) {
         Map<SpellAbility, Integer> stackIds = new HashMap<>();
-        game.getStack().forEach(item -> stackIds.put(item.getSpellAbility(), item.getId()));
+        game.getStack().forEach(item -> stackIds.put(item.getSpellAbility(), view.stackAlias(item.getId())));
         List<Object> result = new ArrayList<>();
         int position = 0;
         for (var item : game.getStack()) {
@@ -153,7 +153,7 @@ final class ObservationReader {
             Card host = ability.getHostCard();
             var identity = view.identity(host);
             boolean down = host.isFaceDown();
-            var facts = data("id", item.getId(), "card_name", identity == null ? null : identity.getName(),
+            var facts = data("id", view.stackAlias(item.getId()), "card_name", identity == null ? null : identity.getName(),
                     "scope", down && identity != null ? "observer_private" : "public", "controller", view.side(ability.getActivatingPlayer()),
                     "is_token", host.isToken(), "is_face_down", down,
                     "copied_name", identity == null ? null : PrintedText.copiedName(host),
@@ -243,18 +243,19 @@ final class ObservationReader {
                 }
             }
         }
-        int index = 0;
         for (var trigger : game.getTriggerHandler().getDelayedTriggers()) {
             Card host = trigger.getHostCard();
             Card source = host.getEffectSource();
             boolean endStepReturn = endStepReturn(trigger);
             if (endStepReturn) { source = game.getCardState(host, null); }
-            var sourceRef = source != null && view.canIdentify(source.getView()) ? view.reference(source) : null;
-            result.add(data("id", "delayed_trigger:" + index++, "controller", view.side(endStepReturn
+            Card origin = source == null ? host : source;
+            var sourceRef = view.canSee(origin.getView()) ? view.reference(origin) : view.rememberedReference(origin.getId());
+            if (sourceRef == null) { continue; } // Never disclose a trigger whose origin has not been observed.
+            result.add(data("id", "delayed_trigger:" + view.triggerAlias(trigger), "controller", view.side(endStepReturn
                         ? trigger.getSpawningAbility().getActivatingPlayer() : host.getController()),
-                    "type", "delayed_trigger", "text", source == null || view.canIdentify(source.getView()) ? PrintedText.trigger(trigger) : null,
+                    "type", "delayed_trigger", "text", view.canIdentify(origin.getView()) ? PrintedText.trigger(trigger) : null,
                     "duration", endStepReturn ? "UntilNextEndStep" : duration(host),
-                    "source", endStepReturn ? sourceRef : view.reference(source),
+                    "source", sourceRef,
                     "targets", endStepReturn ? returnRefs(game, view, trigger.getTriggerRemembered()) : List.of()));
         }
         return result;

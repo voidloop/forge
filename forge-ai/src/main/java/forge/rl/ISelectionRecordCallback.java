@@ -7,4 +7,7 @@ import java.util.Map;
 public interface ISelectionRecordCallback {
     void before(Map<String, Object> request);
     void after(List<Integer> answer);
+    /** Internal lifecycle: bind Python memory after game setup, before choices. */
+    default void observe(StateReader reader) { }
+    default void close() { }
 }

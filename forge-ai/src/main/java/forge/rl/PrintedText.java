@@ -60,6 +60,7 @@ final class PrintedText {
     }
 
     static String trigger(Trigger trigger) {
+        trigger = trigger.copy(trigger.getHostCard(), true); // ensureAbility must not initialize a live trigger.
         String text = trigger.toString();
         SpellAbility ability = trigger.ensureAbility();
         if (ability != null) { text = trigger.replaceAbilityText(text, ability); }

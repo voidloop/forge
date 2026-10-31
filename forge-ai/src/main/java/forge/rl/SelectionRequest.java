@@ -19,13 +19,17 @@ final class SelectionRequest<T extends GameEntity> {
     private final int upper;
     private final boolean optional;
 
-    SelectionRequest(Player observer, String kind, Iterable<T> options, String title, int min, int max,
+    SelectionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
             boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
         if (reveal != null || params != null && !params.isEmpty()) {
             throw new UnsupportedOperationException("selection reveal/parameters");
         }
         if (min < 0 || max < min) { throw new UnsupportedOperationException("selection bounds"); }
+        if (related != null && (related.getGame() != observer.getGame()
+                || !observer.getGame().getPlayers().contains(related))) {
+            throw new UnsupportedOperationException("selection related player");
+        }
         bindings = new ArrayList<>();
         List<Map<String, Object>> descriptions = new ArrayList<>();
         for (T entity : options) {
@@ -37,7 +41,7 @@ final class SelectionRequest<T extends GameEntity> {
                 }
                 descriptions.add(Map.of("type", "card", "name", card.getName(),
                         "controller", card.getController().getName(), "zone", card.getZone().getZoneType().name()));
-            } else if (entity instanceof Player candidate && observer.getGame().getPlayers().contains(candidate)) {
+            } else if (entity instanceof Player candidate && candidate.getGame() == observer.getGame() && observer.getGame().getPlayers().contains(candidate)) {
                 descriptions.add(Map.of("type", "player", "name", candidate.getName()));
             } else { throw new UnsupportedOperationException("selection entity"); }
             bindings.add(entity);
@@ -46,9 +50,21 @@ final class SelectionRequest<T extends GameEntity> {
         // Native InputSelectEntitiesFromList also caps both bounds to the available list size.
         lower = Math.min(min, bindings.size());
         upper = Math.min(max, bindings.size());
-        data = Map.of("kind", kind, "prompt", Objects.toString(title, ""),
+        Map<String, Object> facts = view.snapshot();
+        for (int i = 0; i < bindings.size(); i++) {
+            Map<String, Object> key = view.reference(bindings.get(i));
+            String group = bindings.get(i) instanceof Card ? "cards" : "players";
+            boolean observed = key != null && ((List<?>) facts.get(group)).stream()
+                    .anyMatch(node -> Objects.equals(((Map<?, ?>) node).get("id"), key.get("id")));
+            if (!observed) { throw new UnsupportedOperationException("Selection option is absent from observation"); }
+            Map<String, Object> option = new java.util.LinkedHashMap<>(descriptions.get(i));
+            option.put("key", key);
+            descriptions.set(i, Map.copyOf(option));
+        }
+        Map<String, Object> decision = StateReader.data("kind", kind, "prompt", Objects.toString(title, ""),
                 "options", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
-                "relatedPlayer", related == null ? "" : related.getName());
+                "relatedPlayer", related == null ? null : view.reference(related));
+        data = Map.of("observation", facts, "decision", decision);
     }
 
     List<T> apply(List<Integer> selected) {

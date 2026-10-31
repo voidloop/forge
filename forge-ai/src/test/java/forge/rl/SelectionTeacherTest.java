@@ -66,7 +66,7 @@ public class SelectionTeacherTest {
         Outcome recorded = execute(teacher);
         assertEquals(recorded, baseline, "Recorder changed native facts or RNG");
         assertNull(recording.pending);
-        assertEquals(recording.entries.stream().map(entry -> entry.request().get("kind")).toList(),
+        assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("decision")).get("kind")).toList(),
                 List.of("single_entity", "cards", "entities", "entities", "cards"));
         assertEquals(recording.entries.get(1).answer().size(), 2, "Multiple selection was not recorded in full");
         assertEquals(recording.entries.get(4).answer(), List.of(), "Empty optional answer was changed");

@@ -69,7 +69,8 @@ public class NativeSelectionOptionsTest {
 
     @Test public void effectsSupplyFilteredAndCurrentOptions() {
         List<Request> requests = new ArrayList<>();
-        Fixture fixture = fixture(request -> {
+        Fixture fixture = fixture(envelope -> {
+            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
             List<?> descriptions = (List<?>) request.get("options");
             List<String> names = descriptions.stream().map(option -> (String) ((Map<?, ?>) option).get("name")).toList();
             Request detached = new Request((String) request.get("kind"), names,
@@ -129,14 +130,16 @@ public class NativeSelectionOptionsTest {
         assertThrows(IllegalArgumentException.class, () -> partial.actor().getController().chooseCardsForEffect(
                 new CardCollection(List.of(partial.first(), partial.second())), null, "optional pair", 2, 2, true, null));
 
-        Fixture shortList = fixture(request -> {
+        Fixture shortList = fixture(envelope -> {
+            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
             assertEquals(request.get("min"), 1);
             assertEquals(request.get("max"), 1);
             return List.of(0);
         });
         var chosen = shortList.actor().getController().chooseCardsForEffect(new CardCollection(shortList.first()), null, "available", 3, 4, false, null);
         assertSame(chosen.getFirst(), shortList.first());
-        Fixture empty = fixture(request -> {
+        Fixture empty = fixture(envelope -> {
+            Map<?, ?> request = (Map<?, ?>) envelope.get("decision");
             assertEquals(request.get("min"), 0);
             assertEquals(request.get("max"), 0);
             return List.of();

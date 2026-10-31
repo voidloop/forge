@@ -7,4 +7,7 @@ import java.util.Map;
 @FunctionalInterface
 public interface IPlayerDecisionCallback {
     List<Integer> choose(Map<String, Object> request);
+    /** Internal lifecycle: bind Python memory after game setup, before choices. */
+    default void observe(StateReader reader) { }
+    default void close() { }
 }

@@ -9,6 +9,7 @@ import forge.game.card.CardView;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.spellability.SpellAbility;
+import forge.game.trigger.Trigger;
 import forge.game.zone.ZoneType;
 
 import java.security.SecureRandom;
@@ -18,6 +19,8 @@ import java.util.*;
 public final class StateReader {
     private final Player observer;
     private final Map<Integer, Integer> aliases = new HashMap<>();
+    private final Map<Integer, Integer> stackAliases = new HashMap<>();
+    private final Map<Trigger, Integer> triggerAliases = new IdentityHashMap<>();
     private final Set<Integer> usedAliases = new HashSet<>();
     private final Random random;
     private KnowledgeEventObserver events;
@@ -141,14 +144,16 @@ public final class StateReader {
                 ? card.getAlternateState().getOracleName() : null;
     }
 
-    int alias(int nativeId) {
-        return aliases.computeIfAbsent(nativeId, ignored -> {
-            int value;
-            do { value = random.nextInt(Integer.MAX_VALUE - 1) + 1; }
-            while (!usedAliases.add(value));
-            return value;
-        });
+    private int nextAlias() {
+        int value;
+        do { value = random.nextInt(Integer.MAX_VALUE - 1) + 1; }
+        while (!usedAliases.add(value));
+        return value;
     }
+
+    int alias(int nativeId) { return aliases.computeIfAbsent(nativeId, ignored -> nextAlias()); }
+    int stackAlias(int nativeId) { return stackAliases.computeIfAbsent(nativeId, ignored -> nextAlias()); }
+    int triggerAlias(Trigger trigger) { return triggerAliases.computeIfAbsent(trigger, ignored -> nextAlias()); }
 
     void conceal(int nativeId) { aliases.remove(nativeId); }
 
@@ -167,7 +172,7 @@ public final class StateReader {
         if (entity instanceof SpellAbility ability) {
             var entry = observer.getGame().getStack().getInstanceMatchingSpellAbilityID(ability);
             return entry != null && entry.getSpellAbility() == ability
-                    ? data("kind", "stack_object", "id", entry.getId()) : null;
+                    ? data("kind", "stack_object", "id", stackAlias(entry.getId())) : null;
         }
         if (entity instanceof Player player) { return reference(player.getView()); }
         if (entity instanceof PlayerView player) { return data("kind", "player", "id", player.getId()); }
