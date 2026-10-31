@@ -296,8 +296,21 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public RollDiceEffect.DieRollResult chooseRollToSwap(List<RollDiceEffect.DieRollResult> rolls) { throw unsupported("chooseRollToSwap"); }
     @Override public String chooseRollSwapValue(List<String> swapChoices, Integer currentResult, int power, int toughness) { throw unsupported("chooseRollSwapValue"); }
     @Override public Object vote(SpellAbility sa, String prompt, List<Object> options, ListMultimap<Object, Player> votes, Player forPlayer, boolean optional) { throw unsupported("vote"); }
-    @Override public boolean mulliganKeepHand(Player player, int cardsToReturn) { throw unsupported("mulliganKeepHand"); }
-    @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) { throw unsupported("tuckCardsViaMulligan"); }
+    @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
+        checkActive();
+        try {
+            startObservation();
+            return MulliganDecision.apply(response(MulliganDecision.keep(player, observation, first, cardsToReturn)));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
+    @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
+        checkActive();
+        try {
+            startObservation();
+            var request = MulliganDecision.tuck(player, observation, hand, cardsToReturn);
+            return new CardCollection(request.apply(cardsToReturn == 0 ? List.of() : response(request.data)));
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         checkActive();
         try {

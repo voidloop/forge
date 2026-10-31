@@ -74,6 +74,39 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         finally { activeKind = null; }
     }
 
+    @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null) { throw new IllegalStateException("Nested mulligan decision"); }
+            startObservation();
+            var request = MulliganDecision.keep(player, observation, first, cardsToReturn);
+            activeKind = "mulligan_keep";
+            callback.before(request);
+            boolean keep = super.mulliganKeepHand(first, cardsToReturn);
+            if (failure != null) { throw failure; }
+            callback.after(List.of(keep ? 1 : 0));
+            return keep;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
+    @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null) { throw new IllegalStateException("Nested tuck decision"); }
+            startObservation();
+            var request = MulliganDecision.tuck(player, observation, hand, cardsToReturn);
+            activeKind = "mulligan_tuck";
+            if (cardsToReturn != 0) { callback.before(request.data); }
+            var chosen = super.tuckCardsViaMulligan(hand, cardsToReturn);
+            if (failure != null) { throw failure; }
+            var answer = request.encode(chosen);
+            if (cardsToReturn != 0) { callback.after(answer); }
+            return chosen;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeKind = null; }
+    }
+
     private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<DecisionRequest<T>> question,
             Supplier<R> original, Function<R, Iterable<T>> selected) {
         if (failure != null) { throw failure; }
