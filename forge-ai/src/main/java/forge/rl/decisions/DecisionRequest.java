@@ -1,4 +1,6 @@
-package forge.rl;
+package forge.rl.decisions;
+
+import forge.rl.StateReader;
 
 import forge.game.GameEntity;
 import forge.game.card.Card;
@@ -12,14 +14,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One native selection: detached question and private, invocation-local bindings. */
-final class DecisionRequest<T extends GameEntity> {
-    final Map<String, Object> data;
+public final class DecisionRequest<T extends GameEntity> {
+    public final Map<String, Object> data;
     private final List<T> bindings;
     private final int lower;
     private final int upper;
     private final boolean optional;
 
-    DecisionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
+    public DecisionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
             boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
         if (reveal != null || params != null && !params.isEmpty()) {
@@ -67,7 +69,7 @@ final class DecisionRequest<T extends GameEntity> {
         data = Map.of("state", facts, "options", decision);
     }
 
-    List<T> apply(List<Integer> selected) {
+    public List<T> apply(List<Integer> selected) {
         Objects.requireNonNull(selected, "Missing selection response");
         for (Object value : selected) {
             if (!(value instanceof Integer)) { throw new IllegalArgumentException("Selection must contain integers"); }
@@ -80,7 +82,7 @@ final class DecisionRequest<T extends GameEntity> {
         return selected.stream().map(bindings::get).toList();
     }
 
-    List<Integer> encode(Iterable<T> selected) {
+    public List<Integer> encode(Iterable<T> selected) {
         Objects.requireNonNull(selected, "Missing native selection");
         List<Integer> indices = new ArrayList<>();
         for (T entity : selected) {

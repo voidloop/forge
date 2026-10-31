@@ -1,5 +1,7 @@
 package forge.rl;
 
+import forge.rl.decisions.BasicLandDecision;
+
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;

@@ -1,4 +1,6 @@
-package forge.rl;
+package forge.rl.decisions;
+
+import forge.rl.StateReader;
 
 import forge.game.GameStage;
 import forge.game.card.Card;
@@ -12,13 +14,13 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One restricted priority question; legality and execution remain native. */
-final class BasicLandDecision {
-    final Map<String, Object> data;
+public final class BasicLandDecision {
+    public final Map<String, Object> data;
     private final Player player;
     private final List<Choice> bindings = new ArrayList<>();
 
-    record Choice(SpellAbility ability, Card card) {
-        int before(Player player, SpellAbility selected) {
+    public record Choice(SpellAbility ability, Card card) {
+        public int before(Player player, SpellAbility selected) {
             requireContext(player);
             if (selected != ability || ability.getHostCard() != card) {
                 throw new IllegalArgumentException("Unbound land action");
@@ -29,7 +31,7 @@ final class BasicLandDecision {
             return player.getLandsPlayedThisTurn();
         }
 
-        void after(Player player, int played, boolean reported) {
+        public void after(Player player, int played, boolean reported) {
             Card current = player.getGame().getCardState(card, null);
             if (!reported || current == null || !current.isInZone(ZoneType.Battlefield) || current.getController() != player
                     || player.getLandsPlayedThisTurn() != played + 1) {
@@ -59,7 +61,7 @@ final class BasicLandDecision {
         }
     }
 
-    BasicLandDecision(Player player, StateReader view) {
+    public BasicLandDecision(Player player, StateReader view) {
         this.player = player;
         requireContext(player);
         List<Map<String, Object>> items = new ArrayList<>();
@@ -84,7 +86,7 @@ final class BasicLandDecision {
                 "scope", "pass_or_basic_land_from_hand", "items", List.copyOf(items)));
     }
 
-    Choice apply(List<Integer> answer) {
+    public Choice apply(List<Integer> answer) {
         Objects.requireNonNull(answer, "Missing priority response");
         if (answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
                 || answer.get(0) < 0 || answer.get(0) > bindings.size()) {
@@ -96,7 +98,7 @@ final class BasicLandDecision {
         return choice;
     }
 
-    List<Integer> encode(List<SpellAbility> chosen) {
+    public List<Integer> encode(List<SpellAbility> chosen) {
         if (chosen == null) { return List.of(0); }
         if (chosen.size() != 1) { throw new IllegalArgumentException("Native priority response must be one land or null"); }
         for (int i = 0; i < bindings.size(); i++) {

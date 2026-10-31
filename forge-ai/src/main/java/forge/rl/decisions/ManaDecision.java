@@ -1,4 +1,6 @@
-package forge.rl;
+package forge.rl.decisions;
+
+import forge.rl.StateReader;
 
 import forge.card.ColorSet;
 import forge.card.MagicColor;
@@ -16,11 +18,11 @@ import java.util.List;
 import java.util.Map;
 
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
-final class ManaDecision {
-    final Map<String, Object> data;
+public final class ManaDecision {
+    public final Map<String, Object> data;
     private final Choice choice;
 
-    static boolean supported(SpellAbility ability) {
+    public static boolean supported(SpellAbility ability) {
         return ability.getApi() == ApiType.Mana && ability.isActivatedAbility() && ability.isManaAbility()
                 && ability.getPayCosts() != null && ability.getManaPart() != null && ability.getSubAbility() == null
                 && ability.getParamOrDefault("Amount", "1").equals("1") && !ability.hasParam("Each")
@@ -32,7 +34,7 @@ final class ManaDecision {
                     .allMatch(part -> part instanceof CostTap || part instanceof CostPartMana mana && mana.getMana().isZero());
     }
 
-    static boolean hasSource(Player player) {
+    public static boolean hasSource(Player player) {
         return player.getCardsIn(ZoneType.Battlefield).stream().filter(Card::isLand)
                 .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaDecision::supported));
     }
@@ -68,7 +70,7 @@ final class ManaDecision {
         return source;
     }
 
-    ManaDecision(Player player, StateReader view) {
+    public ManaDecision(Player player, StateReader view) {
         SpellAbility ability = requireContext(player);
         Player activator = ability.getActivatingPlayer();
         boolean playable;
@@ -86,14 +88,14 @@ final class ManaDecision {
                 "scope", "pass_or_single_tap_mana", "items", List.copyOf(items)));
     }
 
-    Choice apply(List<Integer> answer, Player player) {
+    public Choice apply(List<Integer> answer, Player player) {
         int index = index(answer, choice == null ? 1 : 2);
         if (index == 0) { return null; }
         choice.ability.setActivatingPlayer(player);
         return choice;
     }
 
-    List<Integer> encode(List<SpellAbility> selected) {
+    public List<Integer> encode(List<SpellAbility> selected) {
         if (selected == null) { return List.of(0); }
         if (choice == null || selected.size() != 1 || selected.get(0) != choice.ability
                 || selected.get(0).getHostCard() != choice.card) {
@@ -102,7 +104,7 @@ final class ManaDecision {
         return List.of(1);
     }
 
-    Choice selected() { return choice; }
+    public Choice selected() { return choice; }
 
     private static int index(List<Integer> answer, int count) {
         if (answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
@@ -112,8 +114,8 @@ final class ManaDecision {
         return answer.get(0);
     }
 
-    static final class Choice {
-        final SpellAbility ability;
+    public static final class Choice {
+        public final SpellAbility ability;
         final Card card;
         private int[] before;
         private int beforeTotal;
@@ -124,7 +126,7 @@ final class ManaDecision {
 
         private Choice(SpellAbility ability, Card card) { this.ability = ability; this.card = card; }
 
-        void before(Player player, SpellAbility selected) {
+        public void before(Player player, SpellAbility selected) {
             if (requireContext(player) != ability || selected != ability || ability.getHostCard() != card
                     || player.getGame().getCardState(card, null) != card || !ability.canPlay()) {
                 throw new IllegalArgumentException("Stale or unbound mana activation");
@@ -141,7 +143,7 @@ final class ManaDecision {
 
         private ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
-        Map<String, Object> colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
+        public Map<String, Object> colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
             if (before == null || color != 0 || source != ability || ability.getHostCard() != card || !card.isTapped()
                     || player.getManaPool().totalMana() != beforeTotal || !java.util.Arrays.equals(amounts(player), before)) {
                 throw new IllegalStateException("Unbound or repeated mana color question");
@@ -152,13 +154,13 @@ final class ManaDecision {
                     "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList()));
         }
 
-        byte applyColor(List<Integer> answer) {
+        public byte applyColor(List<Integer> answer) {
             var options = colors().stream().toList();
             color = options.get(index(answer, options.size())).getColorMask();
             return color;
         }
 
-        List<Integer> encodeColor(byte chosen) {
+        public List<Integer> encodeColor(byte chosen) {
             var options = colors().stream().toList();
             for (int i = 0; i < options.size(); i++) {
                 if (options.get(i).getColorMask() == chosen) { color = chosen; return List.of(i); }
@@ -174,7 +176,7 @@ final class ManaDecision {
             }
         }
 
-        void after(Player player, boolean reported) {
+        public void after(Player player, boolean reported) {
             samePriority(player);
             int[] after = amounts(player);
             if (!reported || color == 0 || !card.isTapped() || !card.isInZone(ZoneType.Battlefield)

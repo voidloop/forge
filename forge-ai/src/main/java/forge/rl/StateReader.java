@@ -168,7 +168,7 @@ public final class StateReader {
         return player == null ? "none" : player == observer ? "self" : "opponent";
     }
 
-    Map<String, Object> reference(Object entity) {
+    public Map<String, Object> reference(Object entity) {
         if (entity instanceof SpellAbility ability) {
             var entry = observer.getGame().getStack().getInstanceMatchingSpellAbilityID(ability);
             return entry != null && entry.getSpellAbility() == ability
@@ -182,7 +182,7 @@ public final class StateReader {
         return id == null ? null : data("kind", "card", "id", id);
     }
 
-    static Map<String, Object> data(Object... pairs) {
+    public static Map<String, Object> data(Object... pairs) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) { result.put((String) pairs[i], pairs[i + 1]); }
         return result;

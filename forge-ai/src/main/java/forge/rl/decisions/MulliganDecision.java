@@ -1,4 +1,6 @@
-package forge.rl;
+package forge.rl.decisions;
+
+import forge.rl.StateReader;
 
 import forge.StaticData;
 import forge.MulliganDefs;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
-final class MulliganDecision {
+public final class MulliganDecision {
     static void require(Player player) {
         var game = player.getGame();
         if (game.getAge() != GameStage.Mulligan || game.getPhaseHandler().getPhase() != null
@@ -28,7 +30,7 @@ final class MulliganDecision {
         }
     }
 
-    static Map<String, Object> keep(Player player, StateReader view, Player first, int count) {
+    public static Map<String, Object> keep(Player player, StateReader view, Player first, int count) {
         require(player);
         if (!player.getGame().getPlayers().contains(first) || count < 0) {
             throw new IllegalArgumentException("Invalid native mulligan context");
@@ -38,14 +40,14 @@ final class MulliganDecision {
                 "items", List.of("mulligan", "keep")));
     }
 
-    static boolean apply(List<Integer> answer) {
+    public static boolean apply(List<Integer> answer) {
         if (answer.size() != 1 || answer.get(0) < 0 || answer.get(0) > 1) {
             throw new IllegalArgumentException("Invalid keep response");
         }
         return answer.get(0) == 1;
     }
 
-    static DecisionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
+    public static DecisionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
         require(player);
         if (count < 0 || count > hand.size()
                 || hand.size() != player.getCardsIn(ZoneType.Hand).size()

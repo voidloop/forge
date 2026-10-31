@@ -1,5 +1,12 @@
 package forge.rl;
 
+import forge.rl.decisions.BasicLandDecision;
+import forge.rl.decisions.CleanupDecision;
+import forge.rl.decisions.DecisionRequest;
+import forge.rl.decisions.ManaDecision;
+import forge.rl.decisions.MulliganDecision;
+import forge.rl.decisions.StartingPlayerDecision;
+
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
 import forge.card.ColorSet;

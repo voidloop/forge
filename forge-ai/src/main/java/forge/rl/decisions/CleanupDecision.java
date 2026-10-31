@@ -1,4 +1,6 @@
-package forge.rl;
+package forge.rl.decisions;
+
+import forge.rl.StateReader;
 
 import forge.game.GameStage;
 import forge.game.card.Card;
@@ -7,8 +9,8 @@ import forge.game.player.Player;
 import forge.game.zone.ZoneType;
 
 /** The native cleanup count is mandatory; the engine performs the discard. */
-final class CleanupDecision {
-    static DecisionRequest<Card> create(Player player, StateReader view, int count) {
+public final class CleanupDecision {
+    public static DecisionRequest<Card> create(Player player, StateReader view, int count) {
         var game = player.getGame();
         var hand = player.getCardsIn(ZoneType.Hand);
         if (game.getAge() != GameStage.Play || game.isGameOver()
