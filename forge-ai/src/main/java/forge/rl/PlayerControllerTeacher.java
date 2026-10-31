@@ -16,7 +16,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Records only the final answers of the three supported public selection methods. */
+/** Records final supported selections and pass/basic-land priority through the public API. */
 public final class PlayerControllerTeacher extends PlayerControllerAi {
     private final IDecisionRecordCallback callback;
     private SpellAbility activeAbility;
@@ -24,6 +24,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private final StateReader observation;
     private boolean observationStarted;
     private RuntimeException failure;
+    private BasicLandDecision.Choice pendingLand;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -50,7 +51,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         if (failure != null) { throw failure; }
         // Native multiple selections call the public single selector internally.
         if (activeKind != null) {
-            if (activeAbility != ability || !kind.equals("single_entity") || activeKind.equals("single_entity")) {
+            if (activeAbility != ability || !kind.equals("single_entity")
+                    || !(activeKind.equals("cards") || activeKind.equals("entities"))) {
                 failure = new UnsupportedOperationException("Unexpected nested teacher selection");
                 throw failure;
             }
@@ -69,6 +71,39 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             return result;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeAbility = null; activeKind = null; }
+    }
+
+    @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeKind != null || pendingLand != null) {
+                throw new IllegalStateException("Previous teacher decision is still active");
+            }
+            startObservation();
+            BasicLandDecision request = new BasicLandDecision(player, observation);
+            activeKind = "priority_basic_lands";
+            callback.before(request.data);
+            List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
+            if (failure != null) { throw failure; }
+            List<Integer> answer = request.encode(chosen);
+            if (chosen != null) { pendingLand = new BasicLandDecision.Choice(chosen.get(0), chosen.get(0).getHostCard()); }
+            callback.after(answer);
+            return chosen;
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeAbility = null; activeKind = null; }
+    }
+
+    @Override public boolean playChosenSpellAbility(SpellAbility ability) {
+        if (failure != null) { throw failure; }
+        BasicLandDecision.Choice choice = pendingLand;
+        pendingLand = null;
+        try {
+            if (choice == null) { throw new IllegalArgumentException("Unbound teacher land action"); }
+            int played = choice.before(player, ability);
+            boolean reported = super.playChosenSpellAbility(ability);
+            choice.after(player, played, reported);
+            return reported;
+        } catch (RuntimeException error) { failure = error; throw error; }
     }
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,

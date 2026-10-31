@@ -4,6 +4,8 @@ import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
 import forge.game.Game;
 import forge.game.card.CardCollection;
+import forge.game.phase.PhaseType;
+import forge.game.zone.ZoneType;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -98,6 +100,122 @@ public class PlayerControllerTeacherTest {
                 new CardCollection(fixture.first()), null, "stopped", 1, 1, false, null));
     }
 
+    private static Outcome executePriority(BasicLandPriorityTest.Fixture fixture) {
+        List<List<Object>> states = new ArrayList<>();
+        var controller = fixture.player().getController();
+        states.add(OriginalCompositeChoice.observe(fixture.game()));
+        var chosen = controller.chooseSpellAbilityToPlay();
+        states.add(OriginalCompositeChoice.observe(fixture.game()));
+        assertEquals(states.get(1), states.get(0), "Decision executed a land");
+        if (chosen != null) {
+            assertEquals(chosen.size(), 1);
+            var card = chosen.get(0).getHostCard();
+            assertTrue(controller.playChosenSpellAbility(chosen.get(0)));
+            assertTrue(fixture.game().getCardState(card, null).isInZone(ZoneType.Battlefield));
+            assertEquals(fixture.player().getLandsPlayedThisTurn(), 1);
+            states.add(OriginalCompositeChoice.observe(fixture.game()));
+            assertNull(controller.chooseSpellAbilityToPlay());
+            states.add(OriginalCompositeChoice.observe(fixture.game()));
+        }
+        return new Outcome(states, MyRandom.getRandom().nextLong());
+    }
+
+    private static BasicLandPriorityTest.Fixture priorityFixture(forge.LobbyPlayer lobby, int context) {
+        var fixture = BasicLandPriorityTest.fixture(lobby);
+        fixture.game().getPhaseHandler().devModeSet(context == 1 ? PhaseType.COMBAT_BEGIN
+                : context == 3 ? PhaseType.MAIN2 : PhaseType.MAIN1,
+                context == 2 ? fixture.opponent() : fixture.player(), false, context == 3 ? 6 : 1);
+        fixture.game().getPhaseHandler().setPriority(fixture.player());
+        return fixture;
+    }
+
+    @Test public void priorityIsNeutralAndReplaysBeforeAndAfterLandExecution() {
+        for (int context = 0; context < 4; context++) {
+            MyRandom.setRandom(new Random(0));
+            Outcome baseline = executePriority(priorityFixture(new LobbyPlayerAi("first", null), context));
+            Recording recording = new Recording();
+            MyRandom.setRandom(new Random(0));
+            var teacher = priorityFixture(new LobbyPlayerTeacher("first", recording), context);
+            Outcome recorded = executePriority(teacher);
+            assertEquals(recorded, baseline, "Priority recording changed native facts/RNG");
+            assertNull(recording.pending);
+            assertEquals(recording.entries.get(recording.entries.size() - 1).answer(), List.of(0));
+            if (context == 0 || context == 3) {
+                assertEquals(recording.entries.size(), 2);
+                assertTrue(recording.entries.get(0).answer().get(0) > 0);
+            } else { assertEquals(recording.entries.size(), 1); }
+            int[] cursor = {0};
+            MyRandom.setRandom(new Random(0));
+            var replay = priorityFixture(new LobbyPlayerRl("first", request -> {
+                Entry entry = recording.entries.get(cursor[0]++);
+                assertEquals(request, entry.request(), "Priority request diverged");
+                return entry.answer();
+            }), context);
+            assertNotSame(replay.forest(), teacher.forest());
+            assertEquals(executePriority(replay).states(), recorded.states());
+            assertEquals(cursor[0], recording.entries.size());
+            ((PlayerControllerTeacher) teacher.player().getController()).closeObservation();
+            ((PlayerControllerRl) replay.player().getController()).closeObservation();
+        }
+    }
+
+    @Test public void priorityErrorsRemainDistinctFromAnswersAndExecution() {
+        Recording staleRecording = new Recording();
+        var stale = priorityFixture(new LobbyPlayerTeacher("first", staleRecording), 0);
+        var controller = stale.player().getController();
+        var choice = controller.chooseSpellAbilityToPlay();
+        assertEquals(staleRecording.entries.size(), 1, "Answer must be saved before execution");
+        stale.game().getPhaseHandler().devModeSet(PhaseType.COMBAT_BEGIN, stale.player(), false, 1);
+        assertThrows(IllegalArgumentException.class, () -> controller.playChosenSpellAbility(choice.get(0)));
+        assertEquals(stale.player().getLandsPlayedThisTurn(), 0);
+        assertThrows(IllegalArgumentException.class, controller::chooseSpellAbilityToPlay);
+
+        Recording repeatedRecording = new Recording();
+        var repeated = priorityFixture(new LobbyPlayerTeacher("first", repeatedRecording), 0);
+        var repeatedController = repeated.player().getController();
+        var selected = repeatedController.chooseSpellAbilityToPlay().get(0);
+        assertTrue(repeatedController.playChosenSpellAbility(selected));
+        assertThrows(IllegalArgumentException.class, () -> repeatedController.playChosenSpellAbility(selected));
+        assertEquals(repeated.player().getLandsPlayedThisTurn(), 1);
+        assertEquals(repeatedRecording.entries.size(), 1);
+
+        Recording unboundRecording = new Recording();
+        var unbound = priorityFixture(new LobbyPlayerTeacher("first", unboundRecording), 0);
+        assertThrows(IllegalArgumentException.class, () -> unbound.player().getController()
+                .playChosenSpellAbility(unbound.forest().getFirstSpellAbility()));
+        assertTrue(unboundRecording.entries.isEmpty());
+        assertEquals(unbound.player().getLandsPlayedThisTurn(), 0);
+
+        Recording unsupported = new Recording();
+        var bad = priorityFixture(new LobbyPlayerTeacher("first", unsupported), 0);
+        OriginalCompositeChoice.add(bad.game(), bad.player(), "Grizzly Bears");
+        assertThrows(UnsupportedOperationException.class, () -> bad.player().getController().chooseSpellAbilityToPlay());
+        assertTrue(unsupported.entries.isEmpty());
+        assertNull(unsupported.pending);
+
+        Recording pending = new Recording();
+        var broken = priorityFixture(new LobbyPlayerTeacher("first", new IDecisionRecordCallback() {
+            @Override public void before(Map<String, Object> request) { pending.before(request); }
+            @Override public void after(List<Integer> answer) { throw new IllegalStateException("Recorder failed"); }
+        }), 0);
+        assertThrows(IllegalStateException.class, () -> broken.player().getController().chooseSpellAbilityToPlay());
+        assertNotNull(pending.pending);
+        assertTrue(pending.entries.isEmpty());
+        assertEquals(broken.player().getLandsPlayedThisTurn(), 0);
+        assertThrows(IllegalStateException.class, () -> broken.player().getController().chooseSpellAbilityToPlay());
+
+        var fixture = priorityFixture(new LobbyPlayerAi("first", null), 0);
+        var ability = fixture.forest().getFirstSpellAbility();
+        var activator = ability.getActivatingPlayer();
+        BasicLandDecision question = new BasicLandDecision(fixture.player(), new StateReader(fixture.player(), 0L));
+        assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
+        assertThrows(IllegalArgumentException.class, () -> question.encode(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> question.encode(List.of(choice.get(0))));
+        for (var player : List.of(stale.player(), repeated.player(), unbound.player(), bad.player(), broken.player())) {
+            ((PlayerControllerTeacher) player.getController()).closeObservation();
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Path root = Path.of(args[0]).toRealPath();
         for (var entry : Map.of(Game.class, "forge-game", PlayerControllerAi.class, "forge-ai", MyRandom.class, "forge-core").entrySet()) {
@@ -108,6 +226,8 @@ public class PlayerControllerTeacherTest {
         var test = new PlayerControllerTeacherTest();
         test.recordsFinalAnswersNeutrallyAndReplaysOnNewObjects();
         test.nativeFailuresLeavePendingQuestionsAndStopTeacher();
+        test.priorityIsNeutralAndReplaysBeforeAndAfterLandExecution();
+        test.priorityErrorsRemainDistinctFromAnswersAndExecution();
         System.out.println("PASS: selection teacher is neutral to native facts/RNG; final answers replay on new objects without AI; errors stay incomplete");
     }
 }

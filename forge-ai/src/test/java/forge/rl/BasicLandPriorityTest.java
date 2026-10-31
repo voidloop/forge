@@ -1,6 +1,8 @@
 package forge.rl;
 
 import forge.deck.Deck;
+import forge.LobbyPlayer;
+import forge.ai.LobbyPlayerAi;
 import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameStage;
@@ -31,8 +33,12 @@ public class BasicLandPriorityTest {
     @BeforeClass public void initialize() { OriginalCompositeChoice.initialize(Path.of("..")); }
 
     private static Fixture fixture(IPlayerDecisionCallback callback) {
+        return fixture(new LobbyPlayerRl("first", callback));
+    }
+
+    static Fixture fixture(LobbyPlayer lobby) {
         var seats = List.of(
-                new RegisteredPlayer(new Deck("first")).setPlayer(new LobbyPlayerRl("first", callback)),
+                new RegisteredPlayer(new Deck("first")).setPlayer(lobby),
                 new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerRl("second", request -> {
                     throw new AssertionError("Unexpected opponent request");
                 })));
@@ -74,6 +80,30 @@ public class BasicLandPriorityTest {
         assertTrue(fixture.game().getCardState(fixture.forest(), null).isInZone(ZoneType.Battlefield));
         assertEquals(fixture.player().getLandsPlayedThisTurn(), 1);
         assertTrue(nativeLandOptions(fixture.player()).isEmpty());
+    }
+
+    @Test public void nativeAiReturnsLandBeforeExecutionAndThenPasses() {
+        Fixture fixture = fixture(new LobbyPlayerAi("first", null));
+        var controller = fixture.player().getController();
+        var before = OriginalCompositeChoice.observe(fixture.game());
+        List<SpellAbility> chosen = controller.chooseSpellAbilityToPlay();
+        assertNotNull(chosen);
+        assertEquals(chosen.size(), 1);
+        SpellAbility land = chosen.get(0);
+        assertTrue(land.isLandAbility());
+        assertTrue(land.getHostCard() == fixture.forest() || land.getHostCard() == fixture.island());
+        assertTrue(land.getHostCard().getSpellAbilities().stream().anyMatch(ability -> ability == land));
+        assertEquals(OriginalCompositeChoice.observe(fixture.game()), before, "Choosing executed the land");
+        fixture.game().getPhaseHandler().devModeSet(PhaseType.COMBAT_BEGIN, fixture.player(), false, 1);
+        assertTrue(controller.playChosenSpellAbility(land), "Native AI reports true even when timing prevents play");
+        assertEquals(fixture.player().getLandsPlayedThisTurn(), 0);
+        assertTrue(land.getHostCard().isInZone(ZoneType.Hand));
+        fixture.game().getPhaseHandler().devModeSet(PhaseType.MAIN1, fixture.player(), false, 1);
+        assertTrue(controller.playChosenSpellAbility(land));
+        assertTrue(fixture.game().getCardState(land.getHostCard(), null).isInZone(ZoneType.Battlefield));
+        assertEquals(fixture.player().getLandsPlayedThisTurn(), 1);
+        assertNull(controller.chooseSpellAbilityToPlay());
+        System.out.println("PASS: native AI returns a bound land before execution; next priority passes at the land limit");
     }
 
     @Test public void clientCanPassChooseLandAndReceivePriorityAgain() {
@@ -153,6 +183,7 @@ public class BasicLandPriorityTest {
         OriginalCompositeChoice.initialize(root);
         var test = new BasicLandPriorityTest();
         test.nativeApiSuppliesCandidatesTimingAndExecution();
+        test.nativeAiReturnsLandBeforeExecutionAndThenPasses();
         test.clientCanPassChooseLandAndReceivePriorityAgain();
         test.invalidStaleUnboundAndUnsupportedChoicesFailExplicitly();
         System.out.println("PASS: native basic-land candidates and RL priority verified; timing, execution, turn limit and invalid choices checked");
