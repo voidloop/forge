@@ -76,7 +76,7 @@ final class ObservationReader {
         known.sort(Comparator.comparingInt(card -> (Integer) card.get("id")));
         return data("game", data("observer", view.reference(observer), "active_player", view.side(phase.getPlayerTurn()),
                 "starting_player", view.side(game.getStartingPlayer()), "native_format", game.getRules().getGameType().name(),
-                "day_time", game.getDayTime(),
+                "day_night", game.isDay() ? "day" : game.isNight() ? "night" : "neither",
                 "in_combat", phase.inCombat(), "phase", phase.getPhase() == null ? null : phase.getPhase().name(),
                 "turn", phase.getTurn(), "outcome", outcome),
                 "players", playerFacts, "cards", cardFacts, "stack", stack(game, view),
