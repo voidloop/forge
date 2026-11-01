@@ -5,6 +5,7 @@ import forge.card.MagicColor;
 import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostShard;
 import forge.card.mana.ManaAtom;
+import forge.game.Game;
 import forge.game.GameStage;
 import forge.game.ability.ApiType;
 import forge.game.card.Card;
@@ -43,22 +44,7 @@ public final class ManaPaymentDecision {
         // shortcut: ordinary fixed-cost spells and basic lands; extend with later cost families.
         Card host = root.getHostCard();
         PriorityDecision.requireSpell(host);
-        if (game.getAge() != GameStage.Play || game.isGameOver() || root.getActivatingPlayer() != player
-                || host.getGame() != game || host.isFaceDown() || !host.getView().canBeShownTo(player.getView())
-                || !root.isSpell()
-                || host.getController() != player || !(host.isInZone(ZoneType.Hand) || host.isInZone(ZoneType.Stack))
-                || !host.getTriggers().isEmpty() || !host.getReplacementEffects().isEmpty()
-                || root.getSubAbility() != null
-                || !(root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
-                || root.getApi() == ApiType.DealDamage && root.usesTargeting())
-                || root.getPayCosts() == null || root.getPayCosts().getCostParts().size() != 1
-                || root.getPayCosts().isMandatory()
-                || !cost.equals(root.getPayCosts().getTotalMana()) || !cost.equals(part.getMana())
-                || cost.isNoCost() || cost.countX() != 0 || effect
-                || root.isCopied() || root.isOffering() || root.isEmerge() || root.getMayPlayOption() != null
-                || root.getXManaCostPaid() != null || root.hasParam("ManaConversion")
-                || !root.getPayingMana().isEmpty() || !root.getPayingManaAbilities().isEmpty()
-                || !game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
+        if (!isSupportedPaymentContext(game, host, part, effect)) {
             throw new UnsupportedOperationException("Fixed basic-land payment context");
         }
         for (ManaCostShard shard : cost) {
@@ -117,6 +103,57 @@ public final class ManaPaymentDecision {
         data = Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_payment",
                 "source", view.reference(host), "cost", cost.toString(), "items", List.copyOf(items),
                 "pool", List.copyOf(initial)));
+    }
+
+    private boolean isSupportedPaymentContext(Game game, Card host, CostPartMana part, boolean effect) {
+        return hasLivePayer(game)
+                && isVisibleControlledSpell(game, host)
+                && hasSupportedSpellEffect(host)
+                && hasMatchingSingleManaCost(part)
+                && isFixedCostPayment(effect)
+                && isOrdinaryCast()
+                && hasNoPaymentActivity()
+                && hasNoPendingGameState(game);
+    }
+
+    private boolean hasLivePayer(Game game) {
+        return game.getAge() == GameStage.Play && !game.isGameOver() && root.getActivatingPlayer() == player;
+    }
+
+    private boolean isVisibleControlledSpell(Game game, Card host) {
+        return host.getGame() == game && !host.isFaceDown() && host.getView().canBeShownTo(player.getView())
+                && root.isSpell() && host.getController() == player
+                && (host.isInZone(ZoneType.Hand) || host.isInZone(ZoneType.Stack));
+    }
+
+    private boolean hasSupportedSpellEffect(Card host) {
+        return host.getTriggers().isEmpty() && host.getReplacementEffects().isEmpty()
+                && root.getSubAbility() == null
+                && (root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
+                || root.getApi() == ApiType.DealDamage && root.usesTargeting());
+    }
+
+    private boolean hasMatchingSingleManaCost(CostPartMana part) {
+        return root.getPayCosts() != null && root.getPayCosts().getCostParts().size() == 1
+                && !root.getPayCosts().isMandatory()
+                && cost.equals(root.getPayCosts().getTotalMana()) && cost.equals(part.getMana());
+    }
+
+    private boolean isFixedCostPayment(boolean effect) {
+        return !cost.isNoCost() && cost.countX() == 0 && !effect;
+    }
+
+    private boolean isOrdinaryCast() {
+        return !root.isCopied() && !root.isOffering() && !root.isEmerge() && root.getMayPlayOption() == null
+                && root.getXManaCostPaid() == null && !root.hasParam("ManaConversion");
+    }
+
+    private boolean hasNoPaymentActivity() {
+        return root.getPayingMana().isEmpty() && root.getPayingManaAbilities().isEmpty();
+    }
+
+    private static boolean hasNoPendingGameState(Game game) {
+        return game.getCardsIn(ZoneType.Command).isEmpty() && game.getTriggerHandler().getDelayedTriggers().isEmpty();
     }
 
     private static void identityMatrix(ManaConversionMatrix matrix) {
