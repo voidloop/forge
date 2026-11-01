@@ -45,9 +45,9 @@ public final class ManaPaymentDecision {
         PriorityDecision.requireSpell(host);
         if (game.getAge() != GameStage.Play || game.isGameOver() || root.getActivatingPlayer() != player
                 || host.getGame() != game || host.isFaceDown() || !host.getView().canBeShownTo(player.getView())
-                || !root.isSpell() || !host.getKeywords().isEmpty()
+                || !root.isSpell()
                 || host.getController() != player || !(host.isInZone(ZoneType.Hand) || host.isInZone(ZoneType.Stack))
-                || !host.getTriggers().isEmpty() || !host.getStaticAbilities().isEmpty() || !host.getReplacementEffects().isEmpty()
+                || !host.getTriggers().isEmpty() || !host.getReplacementEffects().isEmpty()
                 || root.getSubAbility() != null
                 || !(root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
                 || root.getApi() == ApiType.DealDamage && root.usesTargeting())
@@ -70,7 +70,7 @@ public final class ManaPaymentDecision {
         identityMatrix(player.getManaPool());
         if (matrix != null) { identityMatrix(matrix); }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isCreature() && !card.isFaceDown()) { PriorityDecision.requireCreature(card); continue; }
+            if (card.isCreature() && !card.isFaceDown()) { PriorityDecision.requireSpell(card); continue; }
             if (!card.isBasicLand() || card.isSnow() || card.isFaceDown()
                     || !card.getView().canBeShownTo(player.getView())
                     || !card.getTriggers().isEmpty() || !card.getStaticAbilities().isEmpty()

@@ -7,6 +7,7 @@ import forge.game.GameEntity;
 import forge.game.ability.ApiType;
 import forge.game.card.Card;
 import forge.game.cost.CostTap;
+import forge.game.keyword.Keyword;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
@@ -14,6 +15,7 @@ import forge.game.zone.ZoneType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
@@ -23,15 +25,33 @@ public final class PriorityDecision {
     private final List<Choice> bindings = new ArrayList<>();
 
     static void requireCreature(Card card) {
-        if (!card.isCreature()) { throw new UnsupportedOperationException("Ordinary priority creature"); }
+        if (!card.isCreature() || !card.getKeywords().isEmpty() || !card.getStaticAbilities().isEmpty()) {
+            throw new UnsupportedOperationException("Vanilla combat creature");
+        }
         requireSpell(card);
     }
 
     static void requireSpell(Card card) {
-        if (!card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
-                || !card.getStaticAbilities().isEmpty() || !card.getReplacementEffects().isEmpty()
+        if (!card.getTriggers().isEmpty() || !card.getReplacementEffects().isEmpty()
+                || !card.isCreature() && (!card.getKeywords().isEmpty() || !card.getStaticAbilities().isEmpty())
                 || card.getSpellAbilities().size() != 1) {
             throw new UnsupportedOperationException("Ordinary priority creature");
+        }
+        // shortcut: passive Lyra traits only in priority/payment; prove other effects and combat separately.
+        for (var keyword : card.getKeywords()) {
+            if (!(keyword.getKeyword() == Keyword.FLYING || keyword.getKeyword() == Keyword.FIRST_STRIKE
+                    || keyword.getKeyword() == Keyword.LIFELINK)) {
+                throw new UnsupportedOperationException("Ordinary priority creature keyword");
+            }
+        }
+        for (var ability : card.getStaticAbilities()) {
+            if (ability.isKeyword(Keyword.FLYING)) { continue; }
+            var params = new HashMap<>(ability.getMapParams());
+            params.remove("Description");
+            if (!params.equals(Map.of("Mode", "Continuous", "Affected", "Angel.Other+YouCtrl",
+                    "AddPower", "1", "AddToughness", "1", "AddKeyword", "Lifelink"))) {
+                throw new UnsupportedOperationException("Ordinary priority creature static ability");
+            }
         }
         SpellAbility sa = card.getFirstSpellAbility();
         boolean creature = card.isCreature() && sa.getApi() == ApiType.PermanentCreature && !sa.usesTargeting();
@@ -82,7 +102,7 @@ public final class PriorityDecision {
         if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
             throw new IllegalStateException("Player does not have live priority");
         }
-        // shortcut: basic lands, vanilla creatures and single-target fixed damage; extend with later families.
+        // shortcut: basic lands, passive Lyra traits and single-target fixed damage; extend with later families.
         if (!game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
             throw new UnsupportedOperationException("Ordinary priority pending context");
         }
