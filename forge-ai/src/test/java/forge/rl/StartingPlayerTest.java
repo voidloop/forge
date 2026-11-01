@@ -99,6 +99,7 @@ public class StartingPlayerTest {
                     assertNull(((Map<?, ?>) state.get("game")).get("phase"));
                     assertEquals(((Map<?, ?>) state.get("game")).get("active_player"), "none");
                     assertEquals(((Map<?, ?>) state.get("game")).get("observer"), Map.of("kind", "player", "id", p.getId()));
+                    assertFalse(((Map<?, ?>) state.get("game")).containsKey("starting_life"));
                     assertTrue(((List<?>) state.get("cards")).isEmpty());
                     Player first = draw ? p.getSingleOpponent() : p;
                     chosen[0] = first.getId();
