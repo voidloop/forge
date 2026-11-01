@@ -25,16 +25,19 @@ public final class PriorityDecision {
     private final List<Choice> bindings = new ArrayList<>();
 
     static void requireCreature(Card card) {
-        if (!card.isCreature() || !card.getKeywords().isEmpty() || !card.getStaticAbilities().isEmpty()) {
+        if (!isVanillaCombatCreature(card)) {
             throw new UnsupportedOperationException("Vanilla combat creature");
         }
         requireSpell(card);
     }
 
+    private static boolean isVanillaCombatCreature(Card card) {
+        return card.isCreature() && card.getKeywords().isEmpty() && card.getStaticAbilities().isEmpty()
+                && card.getTriggers().isEmpty();
+    }
+
     static void requireSpell(Card card) {
-        if (!card.getTriggers().isEmpty() || !card.getReplacementEffects().isEmpty()
-                || !card.isCreature() && (!card.getKeywords().isEmpty() || !card.getStaticAbilities().isEmpty())
-                || card.getSpellAbilities().size() != 1) {
+        if (!hasOrdinaryCardAbilities(card)) {
             throw new UnsupportedOperationException("Ordinary priority creature");
         }
         // shortcut: passive Lyra traits only in priority/payment; prove other effects and combat separately.
@@ -77,6 +80,12 @@ public final class PriorityDecision {
         }
     }
 
+    private static boolean hasOrdinaryCardAbilities(Card card) {
+        return TriggerDecision.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
+                && (card.isCreature() || card.getKeywords().isEmpty() && card.getStaticAbilities().isEmpty())
+                && card.getSpellAbilities().size() == 1;
+    }
+
     static void requireBasicLand(Card card) {
         if (!card.isBasicLand() || card.isSnow() || !card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
                 || !card.getStaticAbilities().isEmpty() || !card.getReplacementEffects().isEmpty()) {
@@ -102,7 +111,7 @@ public final class PriorityDecision {
         if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
             throw new IllegalStateException("Player does not have live priority");
         }
-        // shortcut: basic lands, passive Lyra traits and single-target fixed damage; extend with later families.
+        // shortcut: basic lands, passive Lyra traits, self ETB draw and fixed damage; extend with later families.
         if (!game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
             throw new UnsupportedOperationException("Ordinary priority pending context");
         }
@@ -118,12 +127,17 @@ public final class PriorityDecision {
         }
         for (var entry : game.getStack()) {
             SpellAbility sa = entry.getSpellAbility();
-            if (!sa.isSpell() || sa.getSubAbility() != null
-                    || !(sa.getApi() == ApiType.PermanentCreature && !sa.usesTargeting()
-                    || sa.getApi() == ApiType.DealDamage && sa.usesTargeting())) {
+            if (!isSupportedStackAbility(sa)) {
                 throw new UnsupportedOperationException("Ordinary priority stack");
             }
         }
+    }
+
+    private static boolean isSupportedStackAbility(SpellAbility ability) {
+        return TriggerDecision.isSupportedWrapper(ability)
+                || ability.isSpell() && ability.getSubAbility() == null
+                && (ability.getApi() == ApiType.PermanentCreature && !ability.usesTargeting()
+                || ability.getApi() == ApiType.DealDamage && ability.usesTargeting());
     }
 
     public PriorityDecision(Player player, StateReader view) {

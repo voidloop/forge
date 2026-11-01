@@ -11,6 +11,7 @@ import forge.rl.decisions.ManaDecision;
 import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.StartingPlayerDecision;
+import forge.rl.decisions.TriggerDecision;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -48,6 +49,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private ManaDecision.Choice pendingMana;
     private ManaDecision.Choice activeMana;
     private ManaPaymentDecision payment;
+    private TriggerDecision activeTrigger;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -261,6 +263,49 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         finally { activeAbility = null; activeKind = null; }
     }
 
+    @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
+        if (failure != null) { throw failure; }
+        try {
+            if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger preparation"); }
+            startObservation();
+            var request = new TriggerDecision(player, observation, abilities);
+            activeTrigger = request;
+            activeKind = "trigger_prepare";
+            callback.before(request.data);
+            super.orderAndPlaySimultaneousSa(abilities);
+            if (failure != null) { throw failure; }
+            callback.after(request.encode());
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeTrigger = null; activeKind = null; }
+    }
+
+    private boolean hasActiveDecision() {
+        return activeKind != null || pendingPriority != null || pendingMana != null
+                || activeMana != null || activePriority != null || payment != null || activeTrigger != null;
+    }
+
+    @Override public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> abilities) {
+        if (failure != null) { throw failure; }
+        try {
+            if (activeTrigger == null) { throw new UnsupportedOperationException("Unbound teacher trigger order"); }
+            activeTrigger.requireBoundOrder(abilities);
+            return super.orderSimultaneousSa(abilities);
+        } catch (RuntimeException error) { failure = error; throw error; }
+    }
+
+    @Override public void playSpellAbilityNoStack(SpellAbility ability, boolean setupTargets) {
+        if (failure != null) { throw failure; }
+        try {
+            if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger resolution"); }
+            TriggerDecision.requireResolution(player, ability, setupTargets);
+            activeAbility = ability;
+            activeKind = "trigger_resolution";
+            super.playSpellAbilityNoStack(ability, setupTargets);
+            if (failure != null) { throw failure; }
+        } catch (RuntimeException error) { failure = error; throw error; }
+        finally { activeAbility = null; activeKind = null; }
+    }
+
     @Override public boolean playChosenSpellAbility(SpellAbility ability) {
         if (failure != null) { throw failure; }
         if (pendingMana != null) {
@@ -308,9 +353,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public boolean payManaCost(ManaCost cost, CostPartMana part, SpellAbility ability,
             String prompt, ManaConversionMatrix matrix, boolean effect) {
         if (failure != null) { throw failure; }
-        if (cost.isZero() && (activePriority != null && activePriority.isMana() && activePriority.ability == ability
-                || activeMana != null && activeMana.ability == ability
-                || payment != null && payment.isSource(ability))) {
+        if (isBoundZeroPayment(cost, ability)) {
             try { return super.payManaCost(cost, part, ability, prompt, matrix, effect); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
@@ -328,6 +371,18 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             return paid;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { payment = null; }
+    }
+
+    private boolean isBoundZeroPayment(ManaCost cost, SpellAbility ability) {
+        return cost.isZero() && (activePriority != null && activePriority.isMana() && activePriority.ability == ability
+                || activeMana != null && activeMana.ability == ability
+                || payment != null && payment.isSource(ability)
+                || isBoundTriggerPayment(ability));
+    }
+
+    private boolean isBoundTriggerPayment(SpellAbility ability) {
+        return activeTrigger != null && activeTrigger.isSource(ability)
+                || "trigger_resolution".equals(activeKind) && activeAbility == ability;
     }
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,

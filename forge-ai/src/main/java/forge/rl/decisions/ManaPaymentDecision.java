@@ -119,7 +119,7 @@ public final class ManaPaymentDecision {
 
     private boolean hasSupportedSpellEffect() {
         Card host = root.getHostCard();
-        return host.getTriggers().isEmpty() && host.getReplacementEffects().isEmpty()
+        return TriggerDecision.hasSupportedTriggers(host) && host.getReplacementEffects().isEmpty()
                 && root.getSubAbility() == null
                 && (root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
                 || root.getApi() == ApiType.DealDamage && root.usesTargeting());

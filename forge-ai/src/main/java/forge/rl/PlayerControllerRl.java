@@ -11,6 +11,7 @@ import forge.rl.decisions.ManaDecision;
 import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.StartingPlayerDecision;
+import forge.rl.decisions.TriggerDecision;
 
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimap;
@@ -163,9 +164,24 @@ public final class PlayerControllerRl extends PlayerController {
         }
         return bound;
     }
-    @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) { throw unsupported("playSpellAbilityNoStack"); }
+    @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) {
+        checkActive();
+        try {
+            TriggerDecision.requireResolution(player, effectSA, mayChoseNewTargets);
+            AbilityUtils.resolve(effectSA);
+        }
+        catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> activePlayerSAs) { throw unsupported("orderSimultaneousSa"); }
-    @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> activePlayerSAs) { throw unsupported("orderAndPlaySimultaneousSa"); }
+    @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> activePlayerSAs) {
+        checkActive();
+        try {
+            startObservation();
+            var request = new TriggerDecision(player, observation, activePlayerSAs);
+            request.apply(response(request.data));
+            request.encode();
+        } catch (RuntimeException error) { throw stop(error); }
+    }
     @Override public boolean playTrigger(Card host, WrappedAbility wrapperAbility, boolean isMandatory) { throw unsupported("playTrigger"); }
     @Override public boolean playSaFromPlayEffect(SpellAbility tgtSA) {
         checkActive();
