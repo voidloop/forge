@@ -78,7 +78,7 @@ final class ObservationReader {
                 "starting_player", view.side(game.getStartingPlayer()), "native_format", game.getRules().getGameType().name(),
                 "day_time", game.getDayTime(),
                 "in_combat", phase.inCombat(), "phase", phase.getPhase() == null ? null : phase.getPhase().name(),
-                "turn", phase.getTurn(), "is_first_turn", phase.getTurn() == 1, "outcome", outcome),
+                "turn", phase.getTurn(), "outcome", outcome),
                 "players", playerFacts, "cards", cardFacts, "stack", stack(game, view),
                 "effects", effects(game, view), "commander_damage", commanderDamage,
                 "knowledge", data("visible", known, "zones", zones, "deck", deck));
