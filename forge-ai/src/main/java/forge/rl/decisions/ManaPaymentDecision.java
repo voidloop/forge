@@ -40,14 +40,17 @@ public final class ManaPaymentDecision {
         this.root = root;
         this.cost = cost;
         var game = player.getGame();
-        // shortcut: unmodified fixed-cost vanilla creatures and ordinary basic lands; extend with later cost families.
+        // shortcut: ordinary fixed-cost spells and basic lands; extend with later cost families.
         Card host = root.getHostCard();
+        PriorityDecision.requireSpell(host);
         if (game.getAge() != GameStage.Play || game.isGameOver() || root.getActivatingPlayer() != player
                 || host.getGame() != game || host.isFaceDown() || !host.getView().canBeShownTo(player.getView())
-                || !root.isSpell() || !host.isCreature() || !host.getKeywords().isEmpty()
+                || !root.isSpell() || !host.getKeywords().isEmpty()
                 || host.getController() != player || !(host.isInZone(ZoneType.Hand) || host.isInZone(ZoneType.Stack))
                 || !host.getTriggers().isEmpty() || !host.getStaticAbilities().isEmpty() || !host.getReplacementEffects().isEmpty()
-                || root.getApi() != ApiType.PermanentCreature || root.getSubAbility() != null || root.usesTargeting()
+                || root.getSubAbility() != null
+                || !(root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
+                || root.getApi() == ApiType.DealDamage && root.usesTargeting())
                 || root.getPayCosts() == null || root.getPayCosts().getCostParts().size() != 1
                 || root.getPayCosts().isMandatory()
                 || !cost.equals(root.getPayCosts().getTotalMana()) || !cost.equals(part.getMana())

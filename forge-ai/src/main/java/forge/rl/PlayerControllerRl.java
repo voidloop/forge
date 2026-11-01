@@ -234,6 +234,14 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public TargetChoices chooseNewTargetsFor(SpellAbility ability, Predicate<GameObject> filter, boolean optional) { throw unsupported("chooseNewTargetsFor"); }
     @Override public boolean chooseTargetsFor(SpellAbility currentAbility) {
         checkActive();
+        if (activePriority != null) {
+            try {
+                // Observe Hand→Stack before native targeting cancellation silently rolls it back.
+                observation.snapshot();
+                return activePriority.applyTarget(player, currentAbility);
+            }
+            catch (RuntimeException error) { throw stop(error); }
+        }
         if (active == null || currentAbility != active.root().getSubAbility()
                 || currentAbility.getSubAbility() != null || !currentAbility.getTargets().isEmpty()) {
             throw unsupported("unbound targets");

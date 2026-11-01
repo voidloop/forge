@@ -3,6 +3,7 @@ package forge.rl.decisions;
 import forge.rl.StateReader;
 import forge.card.mana.ManaCostShard;
 import forge.game.GameStage;
+import forge.game.GameEntity;
 import forge.game.ability.ApiType;
 import forge.game.card.Card;
 import forge.game.cost.CostTap;
@@ -12,6 +13,7 @@ import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
@@ -21,14 +23,25 @@ public final class PriorityDecision {
     private final List<Choice> bindings = new ArrayList<>();
 
     static void requireCreature(Card card) {
-        if (!card.isCreature() || !card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
+        if (!card.isCreature()) { throw new UnsupportedOperationException("Ordinary priority creature"); }
+        requireSpell(card);
+    }
+
+    static void requireSpell(Card card) {
+        if (!card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
                 || !card.getStaticAbilities().isEmpty() || !card.getReplacementEffects().isEmpty()
                 || card.getSpellAbilities().size() != 1) {
             throw new UnsupportedOperationException("Ordinary priority creature");
         }
         SpellAbility sa = card.getFirstSpellAbility();
-        if (!sa.isSpell() || sa.getApi() != ApiType.PermanentCreature || sa.getSubAbility() != null
-                || sa.usesTargeting() || sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
+        boolean creature = card.isCreature() && sa.getApi() == ApiType.PermanentCreature && !sa.usesTargeting();
+        boolean damage = card.isInstantOrSorcery() && sa.getApi() == ApiType.DealDamage && sa.usesTargeting()
+                && sa.getMinTargets() == 1 && sa.getMaxTargets() == 1 && !sa.isDividedAsYouChoose()
+                && !sa.hasParam("TargetingPlayer") && !sa.getTargetRestrictions().isRandomTarget()
+                && sa.getTargetRestrictions().getZone().equals(List.of(ZoneType.Battlefield))
+                && sa.getParamOrDefault("NumDmg", "").matches("[1-9][0-9]*");
+        if (!sa.isSpell() || !(creature || damage) || sa.getSubAbility() != null
+                || sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
                 || sa.getPayCosts().isMandatory() || !sa.getPayCosts().isOnlyManaCost()
                 || !sa.getPayCosts().getTotalMana().equals(card.getManaCost())
                 || card.getManaCost().isNoCost() || card.getManaCost().countX() != 0
@@ -69,7 +82,7 @@ public final class PriorityDecision {
         if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
             throw new IllegalStateException("Player does not have live priority");
         }
-        // shortcut: ordinary basic lands and fixed-cost vanilla creatures; extend with later families.
+        // shortcut: basic lands, vanilla creatures and single-target fixed damage; extend with later families.
         if (!game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
             throw new UnsupportedOperationException("Ordinary priority pending context");
         }
@@ -81,11 +94,13 @@ public final class PriorityDecision {
                 throw new UnsupportedOperationException("Ordinary priority visibility");
             }
             if (card.isBasicLand()) { requireBasicLand(card); }
-            else { requireCreature(card); }
+            else { requireSpell(card); }
         }
         for (var entry : game.getStack()) {
             SpellAbility sa = entry.getSpellAbility();
-            if (!sa.isSpell() || sa.getApi() != ApiType.PermanentCreature || sa.getSubAbility() != null || sa.usesTargeting()) {
+            if (!sa.isSpell() || sa.getSubAbility() != null
+                    || !(sa.getApi() == ApiType.PermanentCreature && !sa.usesTargeting()
+                    || sa.getApi() == ApiType.DealDamage && sa.usesTargeting())) {
                 throw new UnsupportedOperationException("Ordinary priority stack");
             }
         }
@@ -102,15 +117,29 @@ public final class PriorityDecision {
             for (SpellAbility sa : card.getSpellAbilities()) {
                 Player previous = sa.getActivatingPlayer();
                 boolean playable;
+                List<GameEntity> targets;
                 sa.setActivatingPlayer(player);
-                try { playable = sa.canPlay(); }
+                try {
+                    playable = sa.canPlay();
+                    targets = playable && sa.usesTargeting()
+                            ? List.copyOf(sa.getTargetRestrictions().getAllCandidates(sa)) : null;
+                }
                 finally { sa.setActivatingPlayer(previous); }
                 if (!playable) { continue; }
                 String type = sa.isLandAbility() ? "play_land" : sa.isManaAbility() ? "activate_mana" : "cast_spell";
                 int variant = card.getSpellAbilities().indexOf(sa);
-                bindings.add(new Choice(sa, card, type, variant));
-                items.add(Map.of("type", type, "name", card.getName(), "zone", card.getZone().getZoneType().name(),
-                        "key", view.reference(card), "ability", variant));
+                if (targets != null && targets.stream().anyMatch(target -> !(target instanceof Player)
+                        && !(target instanceof Card c && c.isCreature()))) {
+                    throw new UnsupportedOperationException("Ordinary priority target domain");
+                }
+                bindings.add(new Choice(sa, card, type, variant, targets));
+                Map<String, Object> item = new LinkedHashMap<>(Map.of("type", type, "name", card.getName(),
+                        "zone", card.getZone().getZoneType().name(), "key", view.reference(card), "ability", variant));
+                if (targets != null) {
+                    item.put("targets", targets.stream().map(target -> Map.of("key", view.reference(target),
+                            "name", target.getName(), "type", target instanceof Player ? "player" : "card")).toList());
+                }
+                items.add(Map.copyOf(item));
             }
         }
         data = Map.of("state", view.snapshot(), "options", Map.of("kind", "priority",
@@ -118,12 +147,20 @@ public final class PriorityDecision {
     }
 
     public Choice apply(List<Integer> answer) {
-        if (answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
+        if (answer == null || answer.isEmpty() || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))
                 || answer.get(0) < 0 || answer.get(0) > bindings.size()) {
             throw new IllegalArgumentException("Invalid priority answer");
         }
-        if (answer.get(0) == 0) { return null; }
+        if (answer.get(0) == 0) {
+            if (answer.size() != 1) { throw new IllegalArgumentException("Invalid pass answer"); }
+            return null;
+        }
         Choice choice = bindings.get(answer.get(0) - 1);
+        if (answer.size() != (choice.targets == null ? 1 : 2)
+                || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size())) {
+            throw new IllegalArgumentException("Invalid priority target answer");
+        }
+        if (choice.targets != null) { choice.targetIndex = answer.get(1); }
         choice.ability.setActivatingPlayer(player);
         return choice;
     }
@@ -133,7 +170,15 @@ public final class PriorityDecision {
         if (selected.size() == 1) {
             for (int i = 0; i < bindings.size(); i++) {
                 Choice choice = bindings.get(i);
-                if (selected.get(0) == choice.ability && selected.get(0).getHostCard() == choice.card) { return List.of(i + 1); }
+                if (selected.get(0) == choice.ability && selected.get(0).getHostCard() == choice.card) {
+                    if (choice.targets == null) { return List.of(i + 1); }
+                    if (choice.ability.getTargets().size() == 1) {
+                        for (int j = 0; j < choice.targets.size(); j++) {
+                            if (choice.ability.getTargets().get(0) == choice.targets.get(j)) { return List.of(i + 1, j); }
+                        }
+                    }
+                    throw new IllegalArgumentException("Native final target outside previous bindings");
+                }
             }
         }
         throw new IllegalArgumentException("Native priority response outside exact bindings");
@@ -150,15 +195,31 @@ public final class PriorityDecision {
         private final Card card;
         private final String type;
         private final int variant;
+        private final List<GameEntity> targets;
+        private int targetIndex = -1;
         private int landsPlayed;
         private int manaBefore;
         private List<SpellAbility> stackBefore;
 
-        private Choice(SpellAbility ability, Card card, String type, int variant) {
+        private Choice(SpellAbility ability, Card card, String type, int variant, List<GameEntity> targets) {
             this.ability = ability; this.card = card; this.type = type; this.variant = variant;
+            this.targets = targets;
         }
         public boolean isCast() { return type.equals("cast_spell"); }
         public boolean isMana() { return type.equals("activate_mana"); }
+
+        public boolean applyTarget(Player player, SpellAbility selected) {
+            if (selected != ability || targets == null || !ability.getTargets().isEmpty()) {
+                throw new IllegalArgumentException("Unbound ordinary target request");
+            }
+            if (targetIndex == -1) { return false; }
+            GameEntity target = targets.get(targetIndex);
+            if (target instanceof Card c && player.getGame().getCardState(c, null) != c || !ability.canTarget(target)) {
+                throw new IllegalArgumentException("Selected target is no longer legal");
+            }
+            ability.getTargets().add(target);
+            return true;
+        }
 
         public void before(Player player, SpellAbility selected) {
             requireContext(player);
@@ -173,6 +234,11 @@ public final class PriorityDecision {
         }
 
         public void after(Player player, boolean reported) {
+            if (targets != null && stack(player).stream().anyMatch(sa -> sa == ability)
+                    && (targetIndex < 0 || ability.getTargets().size() != 1
+                    || ability.getTargets().get(0) != targets.get(targetIndex))) {
+                throw new IllegalStateException("Native execution changed the bound final target");
+            }
             Card current = player.getGame().getCardState(card, null);
             if (type.equals("play_land") && (!reported || current == null || !current.isInZone(ZoneType.Battlefield)
                     || current.getController() != player || player.getLandsPlayedThisTurn() != landsPlayed + 1)) {
