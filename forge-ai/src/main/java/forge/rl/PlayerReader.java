@@ -4,6 +4,7 @@ import com.google.common.collect.Iterables;
 import forge.game.Game;
 import forge.game.card.Card;
 import forge.game.player.Player;
+import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 
 import java.util.*;
@@ -44,9 +45,18 @@ final class PlayerReader {
                     .filter(ability -> !(card.isAbilitySick() && ability.getPayCosts().hasTapCost())).toList();
             if (abilities.isEmpty()) { continue; }
             Set<String> produced = new HashSet<>();
-            for (int i = 0; i < names.length; i++) {
-                String symbol = symbols[i];
-                if (abilities.stream().anyMatch(ability -> ability.canProduce(symbol))) { produced.add(names[i]); }
+            List<Activator> activators = new ArrayList<>();
+            abilities.forEach(ability -> activators(ability, activators));
+            try {
+                // Match native null-activator fallback without its diagnostic or lasting changes.
+                activators.forEach(binding -> binding.ability().setActivatingPlayer(binding.player() == null
+                        ? binding.ability().getHostCard().getController() : binding.player()));
+                for (int i = 0; i < names.length; i++) {
+                    String symbol = symbols[i];
+                    if (abilities.stream().anyMatch(ability -> ability.canProduce(symbol))) { produced.add(names[i]); }
+                }
+            } finally {
+                activators.forEach(binding -> binding.ability().setActivatingPlayer(binding.player()));
             }
             if (produced.isEmpty()) { produced.add("colorless"); }
             total++;
@@ -55,6 +65,15 @@ final class PlayerReader {
         result.put("available_mana", available.entrySet().stream().map(entry -> List.of(entry.getKey(), entry.getValue())).toList());
         result.put("available_mana_total", total);
         return result;
+    }
+
+    private record Activator(SpellAbility ability, Player player) { }
+
+    private static void activators(SpellAbility ability, List<Activator> bindings) {
+        bindings.add(new Activator(ability, ability.getActivatingPlayer()));
+        if (ability.getSubAbility() != null) { activators(ability.getSubAbility(), bindings); }
+        ability.getAdditionalAbilities().values().forEach(child -> activators(child, bindings));
+        ability.getAdditionalAbilityLists().values().forEach(children -> children.forEach(child -> activators(child, bindings)));
     }
 
     private static String room(Player player) {
