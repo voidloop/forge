@@ -5,7 +5,6 @@ import forge.card.MagicColor;
 import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostShard;
 import forge.card.mana.ManaAtom;
-import forge.game.Game;
 import forge.game.GameStage;
 import forge.game.ability.ApiType;
 import forge.game.card.Card;
@@ -45,7 +44,7 @@ public final class ManaPaymentDecision {
         // shortcut: ordinary fixed-cost spells and basic lands; extend with later cost families.
         Card host = root.getHostCard();
         PriorityDecision.requireSpell(host);
-        if (!isSupportedPaymentContext(game, host, part, effect)) {
+        if (!isSupportedPaymentContext(part, effect)) {
             throw new UnsupportedOperationException("Fixed basic-land payment context");
         }
         for (ManaCostShard shard : cost) {
@@ -95,28 +94,31 @@ public final class ManaPaymentDecision {
                 "pool", List.copyOf(initial)));
     }
 
-    private boolean isSupportedPaymentContext(Game game, Card host, CostPartMana part, boolean effect) {
-        return hasLivePayer(game)
-                && isVisibleControlledSpell(game, host)
-                && hasSupportedSpellEffect(host)
+    private boolean isSupportedPaymentContext(CostPartMana part, boolean effect) {
+        return hasLivePayer()
+                && isVisibleControlledSpell()
+                && hasSupportedSpellEffect()
                 && hasMatchingSingleManaCost(part)
                 && isFixedCostPayment(effect)
                 && isOrdinaryCast()
                 && hasNoPaymentActivity()
-                && hasNoPendingGameState(game);
+                && hasNoPendingGameState();
     }
 
-    private boolean hasLivePayer(Game game) {
+    private boolean hasLivePayer() {
+        var game = player.getGame();
         return game.getAge() == GameStage.Play && !game.isGameOver() && root.getActivatingPlayer() == player;
     }
 
-    private boolean isVisibleControlledSpell(Game game, Card host) {
-        return host.getGame() == game && !host.isFaceDown() && host.getView().canBeShownTo(player.getView())
+    private boolean isVisibleControlledSpell() {
+        Card host = root.getHostCard();
+        return host.getGame() == player.getGame() && !host.isFaceDown() && host.getView().canBeShownTo(player.getView())
                 && root.isSpell() && host.getController() == player
                 && (host.isInZone(ZoneType.Hand) || host.isInZone(ZoneType.Stack));
     }
 
-    private boolean hasSupportedSpellEffect(Card host) {
+    private boolean hasSupportedSpellEffect() {
+        Card host = root.getHostCard();
         return host.getTriggers().isEmpty() && host.getReplacementEffects().isEmpty()
                 && root.getSubAbility() == null
                 && (root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
@@ -142,7 +144,8 @@ public final class ManaPaymentDecision {
         return root.getPayingMana().isEmpty() && root.getPayingManaAbilities().isEmpty();
     }
 
-    private static boolean hasNoPendingGameState(Game game) {
+    private boolean hasNoPendingGameState() {
+        var game = player.getGame();
         return game.getCardsIn(ZoneType.Command).isEmpty() && game.getTriggerHandler().getDelayedTriggers().isEmpty();
     }
 
@@ -372,7 +375,7 @@ public final class ManaPaymentDecision {
         }
         while (cursor < split) { activate(answer.get(cursor++)); }
         boolean paid = answer.get(0) == 1;
-        if (!appliedPaymentMatches(answer, debt, paid)) { throw new IllegalStateException("Native payment diverged"); }
+        if (!appliedPaymentMatches(answer, debt)) { throw new IllegalStateException("Native payment diverged"); }
         return paid;
     }
 
@@ -388,19 +391,18 @@ public final class ManaPaymentDecision {
         return position == answer.size() - 1;
     }
 
-    private boolean appliedPaymentMatches(List<Integer> answer, ManaCostBeingPaid debt, boolean paid) {
+    private boolean appliedPaymentMatches(List<Integer> answer, ManaCostBeingPaid debt) {
+        boolean paid = answer.get(0) == 1;
         return debt.isPaid() == paid && encode(paid).equals(answer);
     }
 
     private void activate(int index) {
-        SpellAbility ability = sources.get(index);
-        Card card = cards.get(index);
-        if (!isCurrentUntappedSource(ability, card)) {
+        if (!isCurrentUntappedSource(index)) {
             throw new IllegalArgumentException("Stale payment source");
         }
+        SpellAbility ability = sources.get(index);
         ability.setActivatingPlayer(player);
-        CostTap tap = (CostTap) ability.getPayCosts().getCostParts().get(0);
-        if (!payActivationTapCost(ability, tap)) {
+        if (!payActivationTapCost(ability)) {
             throw new IllegalStateException("Native payment activation rejected");
         }
         player.getGame().getStack().addAndUnfreeze(ability);
@@ -408,12 +410,15 @@ public final class ManaPaymentDecision {
         root.getPayingManaAbilities().add(ability);
     }
 
-    private boolean isCurrentUntappedSource(SpellAbility ability, Card card) {
+    private boolean isCurrentUntappedSource(int index) {
+        SpellAbility ability = sources.get(index);
+        Card card = cards.get(index);
         return ability.getHostCard() == card && player.getGame().getCardState(card, null) == card
                 && card.isInZone(ZoneType.Battlefield) && card.getController() == player && !card.isTapped();
     }
 
-    private boolean payActivationTapCost(SpellAbility ability, CostTap tap) {
+    private boolean payActivationTapCost(SpellAbility ability) {
+        CostTap tap = (CostTap) ability.getPayCosts().getCostParts().get(0);
         return canPayActivationTapCost(ability, tap)
                 && tap.payAsDecided(player, PaymentDecision.number(1), ability, false);
     }
