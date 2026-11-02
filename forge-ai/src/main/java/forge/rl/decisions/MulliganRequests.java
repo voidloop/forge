@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
-public final class MulliganDecision {
+public final class MulliganRequests {
     static void require(Player player) {
         var game = player.getGame();
         if (isOutsideLondonDuel(game)) {
@@ -35,12 +35,12 @@ public final class MulliganDecision {
                 "items", List.of("mulligan", "keep")));
     }
 
-    public static DecisionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
+    public static SelectionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
         require(player);
         if (hasInvalidTuckContext(player, hand, count)) {
             throw new UnsupportedOperationException("Invalid native London tuck count or hand");
         }
-        return new DecisionRequest<>(player, view, "mulligan_tuck", hand, "", count, count,
+        return new SelectionRequest<>(player, view, "mulligan_tuck", hand, "", count, count,
                 false, null, null, null);
     }
 

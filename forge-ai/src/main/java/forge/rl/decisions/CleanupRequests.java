@@ -11,14 +11,14 @@ import forge.game.player.Player;
 import forge.game.zone.ZoneType;
 
 /** The native cleanup count is mandatory; the engine performs the discard. */
-public final class CleanupDecision {
-    public static DecisionRequest<Card> create(Player player, StateReader view, int count) {
+public final class CleanupRequests {
+    public static SelectionRequest<Card> create(Player player, StateReader view, int count) {
         var game = player.getGame();
         var hand = player.getCardsIn(ZoneType.Hand);
         if (hasInvalidCleanupContext(game, player, hand, count)) {
             throw new IllegalArgumentException("Invalid native cleanup discard context or count");
         }
-        return new DecisionRequest<>(player, view, "discard_cleanup", hand, "", count, count,
+        return new SelectionRequest<>(player, view, "discard_cleanup", hand, "", count, count,
                 false, null, null, null);
     }
 

@@ -14,7 +14,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final attacker/defender assignments, bound before the native void decision. */
-public final class AttackersDecision {
+public final class AttackersRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -34,12 +34,12 @@ public final class AttackersDecision {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Attacker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
-            else { PriorityDecision.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 
-    public AttackersDecision(Player player, StateReader view, Player attacker, Combat combat) {
+    public AttackersRequest(Player player, StateReader view, Player attacker, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();

@@ -12,8 +12,8 @@ import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.CombatDamageDecision;
-import forge.rl.decisions.CombatGraveyardDecision;
+import forge.rl.decisions.CombatDamageRequest;
+import forge.rl.decisions.CombatGraveyardRequest;
 import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
 import forge.util.MyRandom;
@@ -211,7 +211,7 @@ public class CombatDamageTest {
         var view = new StateReader(player, 0L);
         var targets = new CardCollection(f.game().getCombat().getBlockers(f.attackers().get(0)));
         try {
-            var request = new CombatDamageDecision(player, view, f.attackers().get(0), targets,
+            var request = new CombatDamageRequest(player, view, f.attackers().get(0), targets,
                     f.game().getCombat().getAttackers(), 6, f.defender(), true);
             var lki = CardCopyService.getLKICopy(targets.get(0));
             assertEquals(lki, targets.get(0)); assertNotSame(lki, targets.get(0));
@@ -228,14 +228,14 @@ public class CombatDamageTest {
         var dead = new CardCollection(f.blockers().subList(0, 2));
         dead.forEach(c -> c.setDamage(2));
         try {
-            var request = new CombatGraveyardDecision(f.defender(), view, dead, ZoneType.Graveyard, null);
+            var request = new CombatGraveyardRequest(f.defender(), view, dead, ZoneType.Graveyard, null);
             assertEquals(List.copyOf(new CombatGraveyardExecutor(request, List.of(1, 0)).apply()), List.of(dead.get(1), dead.get(0)));
             for (List<Integer> answer : List.of(List.of(0), List.of(0, 0), List.of(0, 2))) {
                 assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, answer).apply());
             }
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder(request, new CardCollection(
                     List.of(CardCopyService.getLKICopy(dead.get(0)), dead.get(1)))).encode());
-            assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardDecision(f.defender(), view, dead, ZoneType.Library, null));
+            assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardRequest(f.defender(), view, dead, ZoneType.Library, null));
             dead.get(0).setDamage(0);
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, List.of(0, 1)).apply());
             dead.get(0).setDamage(2);

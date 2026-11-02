@@ -4,7 +4,7 @@ import forge.game.card.Card;
 import java.util.ArrayList;
 import java.util.List;
 
-public record BlockersRecorder(BlockersDecision request) implements DecisionRecorder {
+public record BlockersRecorder(BlockersRequest request) implements DecisionRecorder {
     @Override public List<Integer> encode() {
         request.requireContext(); request.requireAttackers();
         var answer = new ArrayList<Integer>();

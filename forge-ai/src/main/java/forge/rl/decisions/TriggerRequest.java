@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Order exact mandatory ETB wrappers; automatic effects and resolution stay in Forge. */
-public final class TriggerDecision {
+public final class TriggerRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Binding> bindings;
@@ -91,7 +91,7 @@ public final class TriggerDecision {
         return List.copyOf(result);
     }
 
-    public TriggerDecision(Player player, StateReader view, List<SpellAbility> abilities) {
+    public TriggerRequest(Player player, StateReader view, List<SpellAbility> abilities) {
         this.player = player;
         // shortcut: one or two distinct ETB sources per controller; qualify repeated sources and larger batches separately.
         if (!isSupportedBatch(abilities)) {
@@ -115,7 +115,7 @@ public final class TriggerDecision {
     }
 
     private static boolean isSupportedBatch(List<SpellAbility> abilities) {
-        return !abilities.isEmpty() && abilities.size() <= 2 && abilities.stream().allMatch(TriggerDecision::isSupportedWrapper)
+        return !abilities.isEmpty() && abilities.size() <= 2 && abilities.stream().allMatch(TriggerRequest::isSupportedWrapper)
                 && abilities.stream().map(SpellAbility::getHostCard).distinct().count() == abilities.size();
     }
 

@@ -3,7 +3,7 @@ package forge.rl.decisions;
 import forge.game.spellability.SpellAbility;
 import java.util.List;
 
-public record ManaRecorder(ManaDecision request, List<SpellAbility> selected) implements DecisionRecorder {
+public record ManaRecorder(ManaRequest request, List<SpellAbility> selected) implements DecisionRecorder {
     @Override public List<Integer> encode() {
         if (selected == null) { return List.of(0); }
         if (!isBoundManaChoice()) {

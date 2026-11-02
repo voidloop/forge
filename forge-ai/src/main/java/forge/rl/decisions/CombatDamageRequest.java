@@ -15,7 +15,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final native damage map; target bindings are captured before the choice. */
-public final class CombatDamageDecision {
+public final class CombatDamageRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
@@ -25,7 +25,7 @@ public final class CombatDamageDecision {
     private final CardCollectionView offered;
     private final int damage;
 
-    public CombatDamageDecision(Player player, StateReader view, Card source, CardCollectionView targets,
+    public CombatDamageRequest(Player player, StateReader view, Card source, CardCollectionView targets,
             CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
         this.player = player;
         this.combat = Objects.requireNonNull(player.getGame().getCombat(), "No combat for damage assignment");
@@ -96,8 +96,8 @@ public final class CombatDamageDecision {
             if (isHiddenCard(card, player)) {
                 throw new UnsupportedOperationException("Combat damage visibility");
             }
-            if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
-            else { PriorityDecision.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 

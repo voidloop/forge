@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public record CombatDamageRecorder(CombatDamageDecision request, Map<Card, Integer> chosen) implements DecisionRecorder {
+public record CombatDamageRecorder(CombatDamageRequest request, Map<Card, Integer> chosen) implements DecisionRecorder {
     @Override public List<Integer> encode() {
         if (chosen == null) { throw new UnsupportedOperationException("Deferred combat damage outside vanilla scope"); }
         var answer = new ArrayList<Integer>();

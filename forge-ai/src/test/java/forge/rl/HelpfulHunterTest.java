@@ -11,8 +11,8 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerDecision;
-import forge.rl.decisions.PriorityDecision;
+import forge.rl.decisions.TriggerRequest;
+import forge.rl.decisions.PriorityRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -129,7 +129,7 @@ public class HelpfulHunterTest {
         var view = new StateReader(f.player(), 0L);
         var trigger = f.spell().getHostCard().getTriggers().get(0);
         var originalAbility = trigger.getOverridingAbility();
-        new PriorityDecision(f.player(), view);
+        new PriorityRequest(f.player(), view);
         assertSame(trigger.getOverridingAbility(), originalAbility);
         view.close();
         var probe = new Probe(f.player());
@@ -234,7 +234,7 @@ public class HelpfulHunterTest {
         var wrapper = (WrappedAbility) f.game().getStack().peekAbility();
         f.game().getStack().clear();
         var view = new StateReader(f.player(), 0L);
-        var request = new TriggerDecision(f.player(), view, List.of(wrapper));
+        var request = new TriggerRequest(f.player(), view, List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
         assertThrows(IllegalStateException.class, () -> new TriggerRecorder(request).encode());

@@ -15,7 +15,7 @@ import forge.game.player.RegisteredPlayer;
 import forge.game.zone.ZoneType;
 import forge.rl.decisions.DecisionExecutor;
 import forge.rl.decisions.DecisionRecorder;
-import forge.rl.decisions.StartingPlayerDecision;
+import forge.rl.decisions.StartingPlayerRequest;
 import forge.rl.decisions.StartingPlayerExecutor;
 import forge.rl.decisions.StartingPlayerRecorder;
 import forge.util.MyRandom;
@@ -142,8 +142,8 @@ public class StartingPlayerTest {
         var teacherView = new StateReader(teacher.getRegisteredPlayers().get(0), 0L);
         var replayView = new StateReader(replay.getRegisteredPlayers().get(0), 0L);
         try {
-            var recorded = new StartingPlayerDecision(teacher.getRegisteredPlayers().get(0), teacherView, true);
-            var current = new StartingPlayerDecision(replay.getRegisteredPlayers().get(0), replayView, true);
+            var recorded = new StartingPlayerRequest(teacher.getRegisteredPlayers().get(0), teacherView, true);
+            var current = new StartingPlayerRequest(replay.getRegisteredPlayers().get(0), replayView, true);
             Player original = teacher.getPlayers().get(1);
             Player replacement = replay.getPlayers().get(1);
             DecisionRecorder recorder = new StartingPlayerRecorder(recorded, original);

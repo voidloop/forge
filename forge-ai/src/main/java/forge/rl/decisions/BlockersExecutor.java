@@ -4,7 +4,7 @@ import forge.game.card.Card;
 import forge.game.combat.CombatUtil;
 import java.util.List;
 
-public record BlockersExecutor(BlockersDecision request, List<Integer> answer) implements DecisionExecutor<Void> {
+public record BlockersExecutor(BlockersRequest request, List<Integer> answer) implements DecisionExecutor<Void> {
     @Override public Void apply() {
         request.requireContext(); request.requireAttackers();
         if (!request.combat.getAllBlockers().isEmpty()) { throw new IllegalArgumentException("Combat changed during decision"); }

@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
-public final class PriorityDecision {
+public final class PriorityRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Choice> bindings = new ArrayList<>();
@@ -75,7 +75,7 @@ public final class PriorityDecision {
     }
 
     private static boolean hasOrdinaryCardAbilities(Card card) {
-        return TriggerDecision.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
+        return TriggerRequest.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
                 && (card.isCreature() || card.getKeywords().isEmpty() && card.getStaticAbilities().isEmpty())
                 && card.getSpellAbilities().size() == 1;
     }
@@ -120,13 +120,13 @@ public final class PriorityDecision {
     }
 
     private static boolean isSupportedStackAbility(SpellAbility ability) {
-        return TriggerDecision.isSupportedWrapper(ability)
+        return TriggerRequest.isSupportedWrapper(ability)
                 || ability.isSpell() && ability.getSubAbility() == null
                 && (ability.getApi() == ApiType.PermanentCreature && !ability.usesTargeting()
                 || ability.getApi() == ApiType.DealDamage && ability.usesTargeting());
     }
 
-    public PriorityDecision(Player player, StateReader view) {
+    public PriorityRequest(Player player, StateReader view) {
         this.player = player;
         requireContext(player);
         List<Map<String, Object>> items = new ArrayList<>();

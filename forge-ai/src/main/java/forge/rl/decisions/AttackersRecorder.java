@@ -6,7 +6,7 @@ import forge.game.combat.CombatUtil;
 import java.util.ArrayList;
 import java.util.List;
 
-public record AttackersRecorder(AttackersDecision request) implements DecisionRecorder {
+public record AttackersRecorder(AttackersRequest request) implements DecisionRecorder {
     @Override public List<Integer> encode() {
         request.requireContext();
         var answer = new ArrayList<Integer>();

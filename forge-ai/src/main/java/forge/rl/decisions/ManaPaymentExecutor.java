@@ -8,9 +8,9 @@ import forge.game.spellability.SpellAbility;
 import java.util.ArrayList;
 import java.util.List;
 
-public record ManaPaymentExecutor(ManaPaymentDecision request, List<Integer> answer, ManaCostBeingPaid debt) implements DecisionExecutor<Boolean> {
+public record ManaPaymentExecutor(ManaPaymentRequest request, List<Integer> answer, ManaCostBeingPaid debt) implements DecisionExecutor<Boolean> {
     @Override public Boolean apply() {
-        ManaPaymentDecision.identityMatrix(request.player.getManaPool());
+        ManaPaymentRequest.identityMatrix(request.player.getManaPool());
         request.validate(answer);
         if (!request.isOriginalManaDebt(debt)) {
             throw new UnsupportedOperationException("Adjusted mana debt");
@@ -22,7 +22,7 @@ public record ManaPaymentExecutor(ManaPaymentDecision request, List<Integer> ans
             if (request.needsSourceActivation(i)) {
                 cursor = activateThroughSource(cursor, split, i);
             }
-            if (ManaPaymentDecision.isFinalManaSpend(j, answer)) {
+            if (ManaPaymentRequest.isFinalManaSpend(j, answer)) {
                 cursor = activateRemaining(cursor, split);
             }
             spendMana(i);

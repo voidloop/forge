@@ -13,7 +13,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final blocker/attacker assignments, bound before the native void decision. */
-public final class BlockersDecision {
+public final class BlockersRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -33,8 +33,8 @@ public final class BlockersDecision {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Blocker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
-            else { PriorityDecision.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 
@@ -49,7 +49,7 @@ public final class BlockersDecision {
         }
     }
 
-    public BlockersDecision(Player player, StateReader view, Player defender, Combat combat) {
+    public BlockersRequest(Player player, StateReader view, Player defender, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();

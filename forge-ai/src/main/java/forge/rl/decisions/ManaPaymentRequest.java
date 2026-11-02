@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Fixed mana payment: final activation order, spend order and native result, without AI plans. */
-public final class ManaPaymentDecision {
+public final class ManaPaymentRequest {
     public final Map<String, Object> data;
     final Player player;
     final SpellAbility root;
@@ -34,7 +34,7 @@ public final class ManaPaymentDecision {
     private final List<Boolean> available = new ArrayList<>();
     private final List<Integer> initial = new ArrayList<>();
 
-    public ManaPaymentDecision(Player player, StateReader view, ManaCost cost, CostPartMana part,
+    public ManaPaymentRequest(Player player, StateReader view, ManaCost cost, CostPartMana part,
             SpellAbility root, ManaConversionMatrix matrix, boolean effect) {
         this.player = player;
         this.root = root;
@@ -42,7 +42,7 @@ public final class ManaPaymentDecision {
         var game = player.getGame();
         // shortcut: ordinary fixed-cost spells and basic lands; extend with later cost families.
         Card host = root.getHostCard();
-        PriorityDecision.requireSpell(host);
+        PriorityRequest.requireSpell(host);
         if (!isSupportedPaymentContext(part, effect)) {
             throw new UnsupportedOperationException("Fixed basic-land payment context");
         }
@@ -54,7 +54,7 @@ public final class ManaPaymentDecision {
         identityMatrix(player.getManaPool());
         if (matrix != null) { identityMatrix(matrix); }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (isFaceUpCreature(card)) { PriorityDecision.requireSpell(card); continue; }
+            if (isFaceUpCreature(card)) { PriorityRequest.requireSpell(card); continue; }
             if (!isSupportedBasicLand(card)) {
                 throw new UnsupportedOperationException("Basic-land payment battlefield");
             }
@@ -118,7 +118,7 @@ public final class ManaPaymentDecision {
 
     private boolean hasSupportedSpellEffect() {
         Card host = root.getHostCard();
-        return TriggerDecision.hasSupportedTriggers(host) && host.getReplacementEffects().isEmpty()
+        return TriggerRequest.hasSupportedTriggers(host) && host.getReplacementEffects().isEmpty()
                 && root.getSubAbility() == null
                 && (root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
                 || root.getApi() == ApiType.DealDamage && root.usesTargeting());

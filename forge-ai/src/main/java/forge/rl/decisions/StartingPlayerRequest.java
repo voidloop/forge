@@ -11,16 +11,16 @@ import java.util.Arrays;
 import java.util.Map;
 
 /** Play/draw in an ordinary duel, before opening hands or phases exist. */
-public final class StartingPlayerDecision {
+public final class StartingPlayerRequest {
     public final Map<String, Object> data;
-    final DecisionRequest<Player> selection;
+    final SelectionRequest<Player> selection;
 
-    public StartingPlayerDecision(Player player, StateReader view, boolean isFirstGame) {
+    public StartingPlayerRequest(Player player, StateReader view, boolean isFirstGame) {
         var game = player.getGame();
         if (isOutsideStartingScope(game, player)) {
             throw new UnsupportedOperationException("Starting player outside ordinary pre-hand duel");
         }
-        selection = new DecisionRequest<>(player, view, "starting_player", game.getPlayers(), "", 1, 1,
+        selection = new SelectionRequest<>(player, view, "starting_player", game.getPlayers(), "", 1, 1,
                 false, null, null, null);
         data = Map.of("state", selection.data.get("state"), "options", Map.of("kind", "starting_player",
                 "isFirstGame", isFirstGame, "items", ((Map<?, ?>) selection.data.get("options")).get("items")));

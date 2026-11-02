@@ -1,17 +1,17 @@
 package forge.rl;
 
-import forge.rl.decisions.PriorityDecision;
-import forge.rl.decisions.AttackersDecision;
-import forge.rl.decisions.BlockersDecision;
-import forge.rl.decisions.CombatDamageDecision;
-import forge.rl.decisions.CombatGraveyardDecision;
-import forge.rl.decisions.CleanupDecision;
-import forge.rl.decisions.DecisionRequest;
-import forge.rl.decisions.ManaDecision;
-import forge.rl.decisions.ManaPaymentDecision;
-import forge.rl.decisions.MulliganDecision;
-import forge.rl.decisions.StartingPlayerDecision;
-import forge.rl.decisions.TriggerDecision;
+import forge.rl.decisions.PriorityRequest;
+import forge.rl.decisions.AttackersRequest;
+import forge.rl.decisions.BlockersRequest;
+import forge.rl.decisions.CombatDamageRequest;
+import forge.rl.decisions.CombatGraveyardRequest;
+import forge.rl.decisions.CleanupRequests;
+import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.ManaRequest;
+import forge.rl.decisions.ManaPaymentRequest;
+import forge.rl.decisions.MulliganRequests;
+import forge.rl.decisions.StartingPlayerRequest;
+import forge.rl.decisions.TriggerRequest;
 import forge.rl.decisions.StartingPlayerRecorder;
 import forge.rl.decisions.MulliganKeepRecorder;
 import forge.rl.decisions.SelectionRecorder;
@@ -56,12 +56,12 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private final StateReader observation;
     private boolean observationStarted;
     private RuntimeException failure;
-    private PriorityDecision.Choice pendingPriority;
-    private PriorityDecision.Choice activePriority;
-    private ManaDecision.Choice pendingMana;
-    private ManaDecision.Choice activeMana;
-    private ManaPaymentDecision payment;
-    private TriggerDecision activeTrigger;
+    private PriorityRequest.Choice pendingPriority;
+    private PriorityRequest.Choice activePriority;
+    private ManaRequest.Choice pendingMana;
+    private ManaRequest.Choice activeMana;
+    private ManaPaymentRequest payment;
+    private TriggerRequest activeTrigger;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -97,7 +97,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            var request = new StartingPlayerDecision(player, observation, isFirstGame);
+            var request = new StartingPlayerRequest(player, observation, isFirstGame);
             activeKind = "starting_player";
             callback.before(request.data);
             Player chosen = super.chooseStartingPlayer(isFirstGame);
@@ -113,7 +113,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         try {
             if (activeKind != null) { throw new IllegalStateException("Nested mulligan decision"); }
             startObservation();
-            var request = MulliganDecision.keep(player, observation, first, cardsToReturn);
+            var request = MulliganRequests.keep(player, observation, first, cardsToReturn);
             activeKind = "mulligan_keep";
             callback.before(request);
             boolean keep = super.mulliganKeepHand(first, cardsToReturn);
@@ -129,7 +129,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         try {
             if (activeKind != null) { throw new IllegalStateException("Nested tuck decision"); }
             startObservation();
-            var request = MulliganDecision.tuck(player, observation, hand, cardsToReturn);
+            var request = MulliganRequests.tuck(player, observation, hand, cardsToReturn);
             activeKind = "mulligan_tuck";
             if (cardsToReturn != 0) { callback.before(request.data); }
             var chosen = super.tuckCardsViaMulligan(hand, cardsToReturn);
@@ -141,7 +141,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         finally { activeKind = null; }
     }
 
-    private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<DecisionRequest<T>> question,
+    private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<SelectionRequest<T>> question,
             Supplier<R> original, Function<R, Iterable<T>> selected) {
         if (failure != null) { throw failure; }
         // Native multiple selections call the public single selector internally.
@@ -158,7 +158,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         activeKind = kind;
         try {
             startObservation();
-            DecisionRequest<T> request = question.get();
+            SelectionRequest<T> request = question.get();
             callback.before(request.data);
             R result = original.get();
             if (failure != null) { throw failure; }
@@ -169,7 +169,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return record(null, "discard_cleanup", () -> CleanupDecision.create(player, observation, numDiscard),
+        return record(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), answer -> answer);
     }
 
@@ -180,7 +180,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            var request = new AttackersDecision(player, observation, attacker, combat);
+            var request = new AttackersRequest(player, observation, attacker, combat);
             activeKind = "declare_attackers";
             callback.before(request.data);
             super.declareAttackers(attacker, combat);
@@ -197,7 +197,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            var request = new BlockersDecision(player, observation, defender, combat);
+            var request = new BlockersRequest(player, observation, defender, combat);
             activeKind = "declare_blockers";
             callback.before(request.data);
             super.declareBlockers(defender, combat);
@@ -215,7 +215,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            var request = new CombatDamageDecision(player, observation, source, targets, remaining, damage, defender, overrideOrder);
+            var request = new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder);
             activeKind = "combat_damage";
             callback.before(request.data);
             var chosen = super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder);
@@ -233,7 +233,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            var request = new CombatGraveyardDecision(player, observation, cards, destinationZone, source);
+            var request = new CombatGraveyardRequest(player, observation, cards, destinationZone, source);
             activeKind = "combat_graveyard_order";
             callback.before(request.data);
             var chosen = super.orderMoveToZoneList(cards, destinationZone, source);
@@ -251,8 +251,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new IllegalStateException("Previous teacher decision is still active");
             }
             startObservation();
-            if (ManaDecision.hasSource(player)) {
-                ManaDecision request = new ManaDecision(player, observation);
+            if (ManaRequest.hasSource(player)) {
+                ManaRequest request = new ManaRequest(player, observation);
                 activeKind = "priority_mana";
                 callback.before(request.data);
                 List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
@@ -262,7 +262,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 callback.after(answer);
                 return chosen;
             }
-            PriorityDecision request = new PriorityDecision(player, observation);
+            PriorityRequest request = new PriorityRequest(player, observation);
             activeKind = "priority";
             callback.before(request.data);
             List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
@@ -280,7 +280,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         try {
             if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger preparation"); }
             startObservation();
-            var request = new TriggerDecision(player, observation, abilities);
+            var request = new TriggerRequest(player, observation, abilities);
             activeTrigger = request;
             activeKind = "trigger_prepare";
             callback.before(request.data);
@@ -309,7 +309,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         if (failure != null) { throw failure; }
         try {
             if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger resolution"); }
-            TriggerDecision.requireResolution(player, ability, setupTargets);
+            TriggerRequest.requireResolution(player, ability, setupTargets);
             activeAbility = ability;
             activeKind = "trigger_resolution";
             super.playSpellAbilityNoStack(ability, setupTargets);
@@ -374,7 +374,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 throw new UnsupportedOperationException("Nested teacher mana payment");
             }
             startObservation();
-            var request = new ManaPaymentDecision(player, observation, cost, part, ability, matrix, effect);
+            var request = new ManaPaymentRequest(player, observation, cost, part, ability, matrix, effect);
             payment = request;
             callback.before(request.data);
             boolean paid = super.payManaCost(cost, part, ability, prompt, matrix, effect);
@@ -399,20 +399,20 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return record(sa, "single_entity", () -> new DecisionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
+        return record(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params),
                 answer -> answer == null ? List.of() : List.of(answer));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return record(sa, "cards", () -> new DecisionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
+        return record(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), answer -> answer);
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return record(sa, "entities", () -> new DecisionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
+        return record(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), answer -> answer);
     }
 }

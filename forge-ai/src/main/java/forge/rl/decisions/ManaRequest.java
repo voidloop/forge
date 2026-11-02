@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
-public final class ManaDecision {
+public final class ManaRequest {
     public final Map<String, Object> data;
     final Choice choice;
 
@@ -38,7 +38,7 @@ public final class ManaDecision {
 
     public static boolean hasSource(Player player) {
         return player.getCardsIn(ZoneType.Battlefield).stream().filter(Card::isLand)
-                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaDecision::supported));
+                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaRequest::supported));
     }
 
     private static SpellAbility requireContext(Player player) {
@@ -69,7 +69,7 @@ public final class ManaDecision {
         return source;
     }
 
-    public ManaDecision(Player player, StateReader view) {
+    public ManaRequest(Player player, StateReader view) {
         SpellAbility ability = requireContext(player);
         Player activator = ability.getActivatingPlayer();
         boolean playable;

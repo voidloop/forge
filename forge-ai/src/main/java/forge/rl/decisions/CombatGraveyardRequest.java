@@ -12,14 +12,14 @@ import java.util.List;
 import java.util.Map;
 
 /** Owner's order for simultaneous vanilla combat deaths, before the native zone moves. */
-public final class CombatGraveyardDecision {
+public final class CombatGraveyardRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
     private final List<Card> cards;
-    final DecisionRequest<Card> selection;
+    final SelectionRequest<Card> selection;
 
-    public CombatGraveyardDecision(Player player, StateReader view, CardCollectionView cards,
+    public CombatGraveyardRequest(Player player, StateReader view, CardCollectionView cards,
             ZoneType destination, SpellAbility source) {
         this.player = player;
         this.combat = player.getGame().getCombat();
@@ -28,7 +28,7 @@ public final class CombatGraveyardDecision {
             throw new UnsupportedOperationException("Only simultaneous combat graveyard ordering");
         }
         requireContext();
-        selection = new DecisionRequest<>(player, view, "combat_graveyard_order", cards,
+        selection = new SelectionRequest<>(player, view, "combat_graveyard_order", cards,
                 "Order simultaneous combat deaths into graveyard", cards.size(), cards.size(), false, null, null, null);
         data = selection.data;
     }
@@ -42,7 +42,7 @@ public final class CombatGraveyardDecision {
         if (player.getGame().getCombat() != combat) {
             throw new IllegalArgumentException("Combat changed during graveyard ordering");
         }
-        CombatDamageDecision.requireScope(player);
+        CombatDamageRequest.requireScope(player);
         for (Card card : cards) {
             if (!isBoundSimultaneousCombatDeath(card)) {
                 throw new IllegalArgumentException("Unbound or stale simultaneous combat death");

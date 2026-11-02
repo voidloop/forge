@@ -3,7 +3,7 @@ package forge.rl.decisions;
 import java.util.ArrayList;
 import java.util.List;
 
-public record TriggerRecorder(TriggerDecision request) implements DecisionRecorder {
+public record TriggerRecorder(TriggerRequest request) implements DecisionRecorder {
     @Override public List<Integer> encode() {
         var current = request.preparedStack();
         List<Integer> answer = new ArrayList<>();
