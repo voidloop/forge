@@ -284,7 +284,7 @@ public class StartingPlayerTest {
         }
     }
 
-    @Test public void startupIgnoresLegacyFailuresButRejectsClosedObservation() {
+    @Test public void startupIgnoresOtherDecisionFailuresButRejectsClosedObservation() {
         Recording recording = new Recording();
         Game game = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
         var controller = game.getPlayers().get(0).getController();
@@ -295,7 +295,7 @@ public class StartingPlayerTest {
             assertEquals(recording.beforeCalls, 1);
             assertEquals(recording.afterCalls, 1);
             assertSame(expectThrows(IllegalArgumentException.class, controller::chooseSpellAbilityToPlay), previous,
-                    "Deferred boundaries must keep their current error behavior");
+                    "Other boundaries must keep their current error behavior");
         } finally { close(game); }
         assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
         assertEquals(recording.beforeCalls, 1, "Closed observation must not open a question");
@@ -405,7 +405,7 @@ public class StartingPlayerTest {
         test.startingChoiceDependsOnPlayersAndFirstGameRatherThanFixtureContext();
         test.nonDuelObservationAndNestedStartingChoicesStopBeforeAnotherQuestion();
         test.startupScopeIsRestoredWhenCallbacksThrow();
-        test.startupIgnoresLegacyFailuresButRejectsClosedObservation();
+        test.startupIgnoresOtherDecisionFailuresButRejectsClosedObservation();
         test.adapterInterfacesKeepBindingsLocalToEachGame();
         test.nativeStartupWaitsWithoutOpponentQuestionAndAppliesPlayOrDraw();
         test.teacherKeepsOriginalFinalPlayerStateAndRngAndReplaysOnNewPlayers();

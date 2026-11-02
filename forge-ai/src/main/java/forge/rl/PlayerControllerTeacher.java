@@ -97,21 +97,21 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
-        return withDecision("starting_player", () -> record(
+        return withStartupDecision("starting_player", () -> record(
                 () -> new StartingPlayerRequest(player, observation, isFirstGame),
                 () -> super.chooseStartingPlayer(isFirstGame),
                 new StartingPlayerRecorder()));
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
-        return withDecision("mulligan_keep", () -> record(
+        return withStartupDecision("mulligan_keep", () -> record(
                 () -> MulliganRequests.keep(player, observation, first, cardsToReturn),
                 () -> super.mulliganKeepHand(first, cardsToReturn),
                 new MulliganKeepRecorder()));
     }
 
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
-        return withDecision("mulligan_tuck", () -> record(
+        return withStartupDecision("mulligan_tuck", () -> record(
                 () -> MulliganRequests.tuck(player, observation, hand, cardsToReturn),
                 () -> super.tuckCardsViaMulligan(hand, cardsToReturn), new SelectionRecorder<Card>()::encode,
                 cardsToReturn != 0));
@@ -132,7 +132,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         return answer;
     }
 
-    private <A> A withDecision(String kind, Supplier<A> operation) {
+    private <A> A withStartupDecision(String kind, Supplier<A> operation) {
         if (hasUnfinishedAction()) {
             throw new IllegalStateException("Previous teacher decision is still active");
         }
@@ -148,36 +148,36 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         } finally { activeKind = previousKind; }
     }
 
-    private <R extends DecisionRequest, A> A recordLegacy(
+    private <R extends DecisionRequest, A> A withDecision(
             String name, Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder) {
-        return recordLegacy(name, prepare, original, recorder, true);
-    }
-
-    private <R extends DecisionRequest, A> A recordLegacy(
-            String name, Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder,
-            boolean emitCallbacks) {
-        return withLegacyDecision(() -> {
+        return withRestoredContext(() -> {
             try {
                 beginDecision(name);
-                if (!isStartupDecision(name)) { requireHealthy(); }
-                R request = prepare.get();
-                if (!name.equals("mana_payment")) { activeKind = name; }
-                if (emitCallbacks) { callback.before(request.data()); }
-                if (!isStartupDecision(name)) { requireHealthy(); }
-                A answer = original.get();
-                if (!isStartupDecision(name)) { requireHealthy(); }
-                List<Integer> encoded = recorder.encode(request, answer);
-                if (emitCallbacks) { callback.after(encoded); }
-                if (!isStartupDecision(name)) { requireHealthy(); }
+                requireHealthy();
+                A answer = record(() -> prepareDecision(name, prepare), () -> callOriginal(original), recorder);
+                requireHealthy();
                 return answer;
             } catch (RuntimeException error) {
-                if (!isStartupDecision(name)) { failure = error; }
+                failure = error;
                 throw error;
             }
         });
     }
 
-    private <A> A withLegacyDecision(Supplier<A> operation) {
+    private <R extends DecisionRequest> R prepareDecision(String name, Supplier<R> prepare) {
+        R request = prepare.get();
+        if (!name.equals("mana_payment")) { activeKind = name; }
+        return request;
+    }
+
+    private <A> A callOriginal(Supplier<A> original) {
+        requireHealthy();
+        A answer = original.get();
+        requireHealthy();
+        return answer;
+    }
+
+    private <A> A withRestoredContext(Supplier<A> operation) {
         String previousKind = activeKind;
         SpellAbility previousAbility = activeAbility;
         ManaPaymentRequest previousPayment = payment;
@@ -192,13 +192,13 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     private void beginDecision(String name) {
-        if (!isStartupDecision(name)) { requireHealthy(); }
+        requireHealthy();
         requireDecisionContext(name);
         if (bindsBeforeObservation(name)) { activeKind = name; }
         if (!name.equals("mana_color")) { startObservation(); }
     }
 
-    private <R extends DecisionRequest, A> A recordLegacy(SpellAbility ability, String name, Supplier<R> prepare,
+    private <R extends DecisionRequest, A> A withAbilityDecision(SpellAbility ability, String name, Supplier<R> prepare,
             Supplier<A> original, DecisionRecorder<R, A> recorder) {
         requireHealthy();
         // Native multiple selections call the public single selector internally.
@@ -210,9 +210,9 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             try { return original.get(); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
-        return withLegacyDecision(() -> {
+        return withRestoredContext(() -> {
             activeAbility = ability;
-            return recordLegacy(name, prepare, original, recorder);
+            return withDecision(name, prepare, original, recorder);
         });
     }
 
@@ -253,15 +253,11 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     private boolean bindsBeforeObservation(String name) {
-        return isStartupDecision(name) || isSelectionDecision(name) || name.equals("confirm");
+        return isSelectionDecision(name) || name.equals("confirm");
     }
 
     private boolean isSelectionDecision(String name) {
         return name.equals("single_entity") || name.equals("cards") || name.equals("entities") || name.equals("discard_cleanup");
-    }
-
-    private boolean isStartupDecision(String kind) {
-        return kind.equals("starting_player") || kind.equals("mulligan_keep") || kind.equals("mulligan_tuck");
     }
 
     private boolean isNestedSingleSelection(SpellAbility ability, String kind) {
@@ -271,54 +267,54 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        return recordLegacy(sa, "confirm", () -> new ConfirmActionRequest(player, observation, sa, mode, message,
+        return withAbilityDecision(sa, "confirm", () -> new ConfirmActionRequest(player, observation, sa, mode, message,
                 options, cardToShow, params),
                 () -> super.confirmAction(sa, mode, message, options, cardToShow, params), new ConfirmActionRecorder());
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return recordLegacy(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
+        return withAbilityDecision(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public void declareAttackers(Player attacker, Combat combat) {
-        recordLegacy("declare_attackers", () -> new AttackersRequest(player, observation, attacker, combat),
+        withDecision("declare_attackers", () -> new AttackersRequest(player, observation, attacker, combat),
                 () -> { super.declareAttackers(attacker, combat); return null; }, new AttackersRecorder());
     }
 
     @Override public void declareBlockers(Player defender, Combat combat) {
-        recordLegacy("declare_blockers", () -> new BlockersRequest(player, observation, defender, combat),
+        withDecision("declare_blockers", () -> new BlockersRequest(player, observation, defender, combat),
                 () -> { super.declareBlockers(defender, combat); return null; }, new BlockersRecorder());
     }
 
     @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
             int damage, GameEntity defender, boolean overrideOrder) {
-        return recordLegacy("combat_damage",
+        return withDecision("combat_damage",
                 () -> new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder),
                 () -> super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder),
                 new CombatDamageRecorder());
     }
 
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
-        return recordLegacy("combat_graveyard_order", () -> new CombatGraveyardRequest(player, observation, cards, destinationZone, source),
+        return withDecision("combat_graveyard_order", () -> new CombatGraveyardRequest(player, observation, cards, destinationZone, source),
                 () -> super.orderMoveToZoneList(cards, destinationZone, source), new CombatGraveyardRecorder());
     }
 
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         requireHealthy();
-        return withLegacyDecision(() -> {
+        return withRestoredContext(() -> {
             try {
                 requireDecisionContext("priority");
                 startObservation();
                 if (ManaRequest.hasSource(player)) {
-                    return recordLegacy("priority_mana", () -> new ManaRequest(player, observation),
+                    return withDecision("priority_mana", () -> new ManaRequest(player, observation),
                             () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
                                 List<Integer> answer = new ManaRecorder().encode(request, chosen);
                                 pendingMana = chosen == null ? null : request.selected();
                                 return answer;
                             });
                 }
-                return recordLegacy("priority", () -> new PriorityRequest(player, observation),
+                return withDecision("priority", () -> new PriorityRequest(player, observation),
                         () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
                             List<Integer> answer = new PriorityRecorder().encode(request, chosen);
                             pendingPriority = request.bindChoice(answer);
@@ -329,7 +325,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
-        recordLegacy("trigger_prepare", () -> {
+        withDecision("trigger_prepare", () -> {
             activeTrigger = new TriggerRequest(player, observation, abilities);
             return activeTrigger;
         }, () -> { super.orderAndPlaySimultaneousSa(abilities); return null; }, new TriggerRecorder());
@@ -391,7 +387,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public byte chooseColor(String message, SpellAbility ability, ColorSet colors) {
-        return recordLegacy("mana_color", () -> activeMana.colorRequest(player, observation, message, ability, colors),
+        return withDecision("mana_color", () -> activeMana.colorRequest(player, observation, message, ability, colors),
                 () -> super.chooseColor(message, ability, colors), new ManaColorRecorder());
     }
 
@@ -402,7 +398,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             try { return super.payManaCost(cost, part, ability, prompt, matrix, effect); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
-        return recordLegacy("mana_payment", () -> {
+        return withDecision("mana_payment", () -> {
             payment = new ManaPaymentRequest(player, observation, cost, part, ability, matrix, effect);
             return payment;
         }, () -> super.payManaCost(cost, part, ability, prompt, matrix, effect), new ManaPaymentRecorder());
@@ -422,20 +418,20 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return recordLegacy(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
+        return withAbilityDecision(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params),
                 (request, answer) -> new SelectionRecorder<T>().encode(request, answer == null ? List.of() : List.of(answer)));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return recordLegacy(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
+        return withAbilityDecision(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return recordLegacy(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
+        return withAbilityDecision(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), new SelectionRecorder<T>()::encode);
     }
 }
