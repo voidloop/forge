@@ -7,6 +7,8 @@ import forge.rl.decisions.CombatDamageRequest;
 import forge.rl.decisions.CombatGraveyardRequest;
 import forge.rl.decisions.CleanupRequests;
 import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.ConfirmActionRequest;
+import forge.rl.decisions.ConfirmActionExecutor;
 import forge.rl.decisions.ManaRequest;
 import forge.rl.decisions.ManaPaymentRequest;
 import forge.rl.decisions.MulliganRequests;
@@ -73,6 +75,8 @@ public final class PlayerControllerRl extends PlayerController {
     private final IPlayerDecisionCallback callback;
     private final StateReader observation;
     private boolean observationStarted;
+    private boolean confirming;
+    private boolean callbackActive;
     private RuntimeException failure;
     private Prepared active;
     private PriorityRequest.Choice pendingPriority;
@@ -93,6 +97,8 @@ public final class PlayerControllerRl extends PlayerController {
 
     private List<Integer> response(Map<String, Object> request) {
         checkActive();
+        if (callbackActive) { throw stop(new IllegalStateException("Nested client response")); }
+        callbackActive = true;
         try {
             List<Integer> received = callback.choose(request);
             checkActive();
@@ -102,6 +108,7 @@ public final class PlayerControllerRl extends PlayerController {
             }
             return values;
         } catch (RuntimeException error) { throw stop(error); }
+        finally { callbackActive = false; }
     }
 
     private int single(Map<String, Object> request, int min, int max) {
@@ -147,7 +154,16 @@ public final class PlayerControllerRl extends PlayerController {
 
     public void startObservation() {
         if (failure != null) { throw failure; }
-        if (!observationStarted) { callback.observe(observation); observationStarted = true; }
+        if (!observationStarted) {
+            if (callbackActive) { throw stop(new IllegalStateException("Nested client observation")); }
+            callbackActive = true;
+            try {
+                callback.observe(observation);
+                checkActive();
+                observationStarted = true;
+            } catch (RuntimeException error) { throw stop(error); }
+            finally { callbackActive = false; }
+        }
     }
 
     public void closeObservation() {
@@ -301,8 +317,19 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public List<SpellAbility> chooseSpellAbilitiesForEffect(List<SpellAbility> spells, SpellAbility sa, String title, int num, Map<String, Object> params) { throw unsupported("chooseSpellAbilitiesForEffect"); }
     @Override public SpellAbility chooseSingleSpellForEffect(List<SpellAbility> spells, SpellAbility sa, String title, Map<String, Object> params) { throw unsupported("chooseSingleSpellForEffect"); }
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message, List<String> options, Card cardToShow, Map<String, Object> params) {
-        if (!options.isEmpty() || cardToShow != null) { throw unsupported("confirmAction with extra options/card"); }
-        return binary("confirm", message, Objects.toString(mode, ""));
+        checkActive();
+        try {
+            if (cannotStartConfirmation()) { throw new IllegalStateException("Previous choice has not been executed"); }
+            confirming = true;
+            startObservation();
+            var request = new ConfirmActionRequest(player, observation, sa, mode, message, options, cardToShow, params);
+            return new ConfirmActionExecutor(request, response(request.data())).apply();
+        } catch (RuntimeException error) { throw stop(error); }
+        finally { confirming = false; }
+    }
+
+    private boolean cannotStartConfirmation() {
+        return hasUnfinishedDecision() || active != null || callbackActive;
     }
     @Override public boolean confirmBidAction(SpellAbility sa, PlayerActionConfirmMode bidlife, String string, int bid, Player winner) { throw unsupported("confirmBidAction"); }
     @Override public boolean confirmReplacementEffect(ReplacementEffect replacementEffect, SpellAbility effectSA, GameEntity affected, String question) { throw unsupported("confirmReplacementEffect"); }
@@ -434,7 +461,7 @@ public final class PlayerControllerRl extends PlayerController {
     }
 
     private boolean hasUnfinishedDecision() {
-        return pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null;
+        return confirming || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null;
     }
 
     @Override public boolean playChosenSpellAbility(SpellAbility sa) {

@@ -7,6 +7,8 @@ import forge.rl.decisions.CombatDamageRequest;
 import forge.rl.decisions.CombatGraveyardRequest;
 import forge.rl.decisions.CleanupRequests;
 import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.ConfirmActionRequest;
+import forge.rl.decisions.ConfirmActionRecorder;
 import forge.rl.decisions.ManaRequest;
 import forge.rl.decisions.ManaPaymentRequest;
 import forge.rl.decisions.MulliganRequests;
@@ -41,6 +43,7 @@ import forge.game.combat.Combat;
 import forge.game.zone.ZoneType;
 import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
+import forge.game.player.PlayerActionConfirmMode;
 import forge.game.spellability.SpellAbility;
 import forge.util.collect.FCollectionView;
 
@@ -156,13 +159,16 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         return withLegacyDecision(() -> {
             try {
                 beginDecision(name);
+                if (!isStartupDecision(name)) { requireHealthy(); }
                 R request = prepare.get();
                 if (!name.equals("mana_payment")) { activeKind = name; }
                 if (emitCallbacks) { callback.before(request.data()); }
+                if (!isStartupDecision(name)) { requireHealthy(); }
                 A answer = original.get();
                 if (!isStartupDecision(name)) { requireHealthy(); }
                 List<Integer> encoded = recorder.encode(request, answer);
                 if (emitCallbacks) { callback.after(encoded); }
+                if (!isStartupDecision(name)) { requireHealthy(); }
                 return answer;
             } catch (RuntimeException error) {
                 if (!isStartupDecision(name)) { failure = error; }
@@ -247,7 +253,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     private boolean bindsBeforeObservation(String name) {
-        return isStartupDecision(name) || isSelectionDecision(name);
+        return isStartupDecision(name) || isSelectionDecision(name) || name.equals("confirm");
     }
 
     private boolean isSelectionDecision(String name) {
@@ -261,6 +267,13 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private boolean isNestedSingleSelection(SpellAbility ability, String kind) {
         return activeAbility == ability && kind.equals("single_entity")
                 && (activeKind.equals("cards") || activeKind.equals("entities"));
+    }
+
+    @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
+            List<String> options, Card cardToShow, Map<String, Object> params) {
+        return recordLegacy(sa, "confirm", () -> new ConfirmActionRequest(player, observation, sa, mode, message,
+                options, cardToShow, params),
+                () -> super.confirmAction(sa, mode, message, options, cardToShow, params), new ConfirmActionRecorder());
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
