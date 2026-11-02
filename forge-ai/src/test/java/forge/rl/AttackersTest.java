@@ -181,7 +181,7 @@ public class AttackersTest {
             assertNotSame(lki, offered);
             assertEquals(lki, offered);
             f.game().getCombat().addAttacker(lki, f.game().getPlayers().get(1));
-            assertThrows(IllegalArgumentException.class, () -> new AttackersRecorder(request).encode());
+            assertThrows(IllegalArgumentException.class, () -> new AttackersRecorder().encode(request, null));
         } finally { view.close(); }
     }
 

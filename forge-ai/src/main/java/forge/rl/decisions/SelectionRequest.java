@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One native selection: detached question and private, invocation-local bindings. */
-public final class SelectionRequest<T extends GameEntity> {
+public final class SelectionRequest<T extends GameEntity> implements DecisionRequest {
     public final Map<String, Object> data;
     final List<T> bindings;
     private final int lower;
@@ -66,6 +66,8 @@ public final class SelectionRequest<T extends GameEntity> {
                 "relatedPlayer", related == null ? null : view.reference(related));
         data = Map.of("state", facts, "options", decision);
     }
+
+    @Override public Map<String, Object> data() { return data; }
 
     void validate(List<Integer> selected) {
         Objects.requireNonNull(selected, "Missing selection response");

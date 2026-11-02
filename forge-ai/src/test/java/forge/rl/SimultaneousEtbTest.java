@@ -206,10 +206,10 @@ public class SimultaneousEtbTest {
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), view, wrappers);
-            assertThrows(IllegalStateException.class, () -> new TriggerRecorder(request).encode());
+            assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
-            assertEquals(new TriggerRecorder(request).encode(), answer);
+            assertEquals(new TriggerRecorder().encode(request, null), answer);
             var stack = new ArrayList<SpellAbility>();
             f.game().getStack().forEach(entry -> stack.add(entry.getSpellAbility()));
             assertSame(stack.get(0), wrappers.get(answer.get(1)));
@@ -269,7 +269,7 @@ public class SimultaneousEtbTest {
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), view, List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
-            assertEquals(new TriggerRecorder(request).encode(), List.of(0));
+            assertEquals(new TriggerRecorder().encode(request, null), List.of(0));
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
                 throw new AssertionError("Automatic effect requested another decision");
             });

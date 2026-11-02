@@ -238,7 +238,7 @@ public class BlockersTest {
                     f.game().getCombat().removeFromCombat(offered);
                     f.game().getCombat().addAttacker(lki, f.defender());
                 } else { f.game().getCombat().addBlocker(f.attackers().get(0), lki); }
-                assertThrows(IllegalArgumentException.class, () -> new BlockersRecorder(request).encode());
+                assertThrows(IllegalArgumentException.class, () -> new BlockersRecorder().encode(request, null));
             } finally { view.close(); }
         }
     }

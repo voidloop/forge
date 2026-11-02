@@ -215,9 +215,9 @@ public class CombatDamageTest {
                     f.game().getCombat().getAttackers(), 6, f.defender(), true);
             var lki = CardCopyService.getLKICopy(targets.get(0));
             assertEquals(lki, targets.get(0)); assertNotSame(lki, targets.get(0));
-            assertThrows(IllegalArgumentException.class, () -> new CombatDamageRecorder(request, Map.of(lki, 6)).encode());
-            assertThrows(UnsupportedOperationException.class, () -> new CombatDamageRecorder(request, null).encode());
-            assertThrows(IllegalArgumentException.class, () -> new CombatDamageRecorder(request, Collections.singletonMap(null, 6)).encode());
+            assertThrows(IllegalArgumentException.class, () -> new CombatDamageRecorder().encode(request, Map.of(lki, 6)));
+            assertThrows(UnsupportedOperationException.class, () -> new CombatDamageRecorder().encode(request, null));
+            assertThrows(IllegalArgumentException.class, () -> new CombatDamageRecorder().encode(request, Collections.singletonMap(null, 6)));
             f.game().getCombat().removeFromCombat(targets.get(0));
             assertThrows(IllegalArgumentException.class, () -> new CombatDamageExecutor(request, List.of(0, 6)).apply());
         } finally { view.close(); }
@@ -233,14 +233,14 @@ public class CombatDamageTest {
             for (List<Integer> answer : List.of(List.of(0), List.of(0, 0), List.of(0, 2))) {
                 assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, answer).apply());
             }
-            assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder(request, new CardCollection(
-                    List.of(CardCopyService.getLKICopy(dead.get(0)), dead.get(1)))).encode());
+            assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder().encode(request, new CardCollection(
+                    List.of(CardCopyService.getLKICopy(dead.get(0)), dead.get(1)))));
             assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardRequest(f.defender(), view, dead, ZoneType.Library, null));
             dead.get(0).setDamage(0);
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, List.of(0, 1)).apply());
             dead.get(0).setDamage(2);
             f.game().getPhaseHandler().setCombat(new forge.game.combat.Combat(f.attackers().get(0).getController()));
-            assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder(request, dead).encode());
+            assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder().encode(request, dead));
         } finally { view.close(); }
     }
 

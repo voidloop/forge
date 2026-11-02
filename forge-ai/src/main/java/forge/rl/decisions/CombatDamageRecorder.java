@@ -5,13 +5,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public record CombatDamageRecorder(CombatDamageRequest request, Map<Card, Integer> chosen) implements DecisionRecorder {
-    @Override public List<Integer> encode() {
+public record CombatDamageRecorder() implements DecisionRecorder<CombatDamageRequest, Map<Card, Integer>> {
+    @Override public List<Integer> encode(CombatDamageRequest request, Map<Card, Integer> chosen) {
         if (chosen == null) { throw new UnsupportedOperationException("Deferred combat damage outside vanilla scope"); }
         var answer = new ArrayList<Integer>();
         for (var entry : chosen.entrySet()) {
             int index = entry.getKey() == null ? -1 : request.targets.indexOf(entry.getKey());
-            if (!isBoundDamageEntry(entry, index)) {
+            if (!isBoundDamageEntry(request, entry, index)) {
                 throw new IllegalArgumentException("Final damage map outside exact bindings");
             }
         }
@@ -22,7 +22,7 @@ public record CombatDamageRecorder(CombatDamageRequest request, Map<Card, Intege
         return List.copyOf(answer);
     }
 
-    private boolean isBoundDamageEntry(Map.Entry<Card, Integer> entry, int index) {
+    private boolean isBoundDamageEntry(CombatDamageRequest request, Map.Entry<Card, Integer> entry, int index) {
         return index >= 0 && request.targets.get(index) == entry.getKey() && entry.getValue() != null;
     }
 }

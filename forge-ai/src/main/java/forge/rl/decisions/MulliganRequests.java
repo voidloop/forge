@@ -13,20 +13,22 @@ import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
 public final class MulliganRequests {
+    public record Keep(Map<String, Object> data) implements DecisionRequest { }
+
     static void require(Player player) {
         if (isOutsideLondonDuel(player)) {
             throw new UnsupportedOperationException("Mulligan outside single-hand London duel");
         }
     }
 
-    public static Map<String, Object> keep(Player player, StateReader view, Player first, int count) {
+    public static Keep keep(Player player, StateReader view, Player first, int count) {
         require(player);
         if (hasInvalidKeepContext(player, first, count)) {
             throw new IllegalArgumentException("Invalid native mulligan context");
         }
-        return Map.of("state", view.snapshot(), "options", Map.of("kind", "mulligan_keep",
+        return new Keep(Map.of("state", view.snapshot(), "options", Map.of("kind", "mulligan_keep",
                 "firstPlayer", view.reference(first), "cardsToReturn", count,
-                "items", List.of("mulligan", "keep")));
+                "items", List.of("mulligan", "keep"))));
     }
 
     public static SelectionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {

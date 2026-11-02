@@ -15,7 +15,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final native damage map; target bindings are captured before the choice. */
-public final class CombatDamageRequest {
+public final class CombatDamageRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
@@ -186,4 +186,6 @@ public final class CombatDamageRequest {
     private boolean hasInvalidDamageAmount(int target, int amount) {
         return target < 0 || target >= targets.size() || amount < 0;
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

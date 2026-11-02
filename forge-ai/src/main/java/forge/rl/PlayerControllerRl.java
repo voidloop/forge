@@ -395,7 +395,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            return new MulliganKeepExecutor(response(MulliganRequests.keep(player, observation, first, cardsToReturn))).apply();
+            return new MulliganKeepExecutor(response(MulliganRequests.keep(player, observation, first, cardsToReturn).data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
@@ -482,7 +482,7 @@ public final class PlayerControllerRl extends PlayerController {
         try {
             if (activeMana == null) { throw unsupported("unbound mana color"); }
             var request = activeMana.colorRequest(player, observation, message, sa, colors);
-            return new ManaColorExecutor(activeMana, response(request)).apply();
+            return new ManaColorExecutor(activeMana, response(request.data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public byte chooseColorAllowColorless(String message, Card c, ColorSet colors) { throw unsupported("chooseColorAllowColorless"); }

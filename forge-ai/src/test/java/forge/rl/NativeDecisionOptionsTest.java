@@ -182,7 +182,7 @@ public class NativeDecisionOptionsTest {
             String saved = request.data.toString();
             options.clear();
             fixture.first().setTapped(true);
-            List<Integer> answer = new SelectionRecorder<>(request, List.of(other, fixture.first())).encode();
+            List<Integer> answer = new SelectionRecorder<Card>().encode(request, List.of(other, fixture.first()));
             assertEquals(answer, List.of(1, 0));
             var applied = new SelectionExecutor<>(request, answer).apply();
             assertSame(applied.get(0), other);
@@ -190,7 +190,7 @@ public class NativeDecisionOptionsTest {
             assertEquals(request.data.toString(), saved, "Native mutations changed a detached question");
             Fixture foreign = fixture(new forge.ai.LobbyPlayerAi("first", null));
             assertThrows(IllegalArgumentException.class,
-                    () -> new SelectionRecorder<>(request, List.of(foreign.first(), other)).encode());
+                    () -> new SelectionRecorder<Card>().encode(request, List.of(foreign.first(), other)));
         } finally { view.close(); }
     }
 

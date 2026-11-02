@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Owner's order for simultaneous vanilla combat deaths, before the native zone moves. */
-public final class CombatGraveyardRequest {
+public final class CombatGraveyardRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
@@ -56,4 +56,6 @@ public final class CombatGraveyardRequest {
                 && card.isCreature() && card.getDamage() >= card.getNetToughness();
     }
 
+
+    @Override public Map<String, Object> data() { return data; }
 }

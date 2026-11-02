@@ -13,7 +13,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final blocker/attacker assignments, bound before the native void decision. */
-public final class BlockersRequest {
+public final class BlockersRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -149,4 +149,6 @@ public final class BlockersRequest {
                 || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
                 || !CombatUtil.canBlock(attackers.get(a), card);
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

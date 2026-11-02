@@ -2,8 +2,8 @@ package forge.rl.decisions;
 
 import java.util.List;
 
-/** Encodes one original final choice for the teacher as a detached protocol answer. */
+/** Encodes an original final choice; Void denotes a choice read from bound native objects. */
 @FunctionalInterface
-public interface DecisionRecorder {
-    List<Integer> encode();
+public interface DecisionRecorder<R, A> {
+    List<Integer> encode(R request, A answer);
 }

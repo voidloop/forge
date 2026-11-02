@@ -215,7 +215,7 @@ public class StartingPlayerTest {
                         new GameRules(GameType.Constructed), count);
                 var controller = game.getPlayers().get(0).getController();
                 assertThrows(UnsupportedOperationException.class, () -> controller.chooseStartingPlayer(true));
-                assertThrows(UnsupportedOperationException.class, controller::awaitNextInput);
+                if (!teacher) { assertThrows(UnsupportedOperationException.class, controller::awaitNextInput); }
                 close(game);
             }
         }
@@ -223,12 +223,11 @@ public class StartingPlayerTest {
         Recording recording = new Recording() {
             @Override public void before(Map<String, Object> data) {
                 super.before(data);
-                assertThrows(IllegalStateException.class, () -> nested[0].getPlayers().get(0).getController().chooseStartingPlayer(false));
+                nested[0].getPlayers().get(0).getController().chooseStartingPlayer(false);
             }
         };
         nested[0] = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
         var controller = nested[0].getPlayers().get(0).getController();
-        assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
         assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
         assertEquals(recording.beforeCalls, 1);
         assertEquals(recording.afterCalls, 0);
@@ -246,11 +245,61 @@ public class StartingPlayerTest {
             var priorityController = priority.getPlayers().get(0).getController();
             assertNotNull(priorityController.chooseSpellAbilityToPlay());
             assertThrows(IllegalStateException.class, () -> priorityController.chooseStartingPlayer(true));
-            assertThrows(IllegalStateException.class, priorityController::awaitNextInput);
+            if (!teacher) { assertThrows(IllegalStateException.class, priorityController::awaitNextInput); }
             assertEquals(teacher ? pending.beforeCalls : clientCalls[0], 1,
                     "Pending execution must not open a starting-player question");
             close(priority);
         }
+    }
+
+    @Test public void startupScopeIsRestoredWhenCallbacksThrow() {
+        for (String stage : List.of("observe", "before", "after")) {
+            List<String> events = new ArrayList<>();
+            var expected = new IllegalStateException("Failed " + stage);
+            Game game = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, new IDecisionRecordCallback() {
+                private boolean failed;
+                private void visit(String current) {
+                    events.add(current);
+                    if (failed) { return; }
+                    if (current.equals(stage)) { failed = true; throw expected; }
+                }
+                @Override public void observe(StateReader reader) { visit("observe"); }
+                @Override public void before(Map<String, Object> request) { visit("before"); }
+                @Override public void after(List<Integer> answer) { visit("after"); }
+            }));
+            try {
+                var controller = game.getPlayers().get(0).getController();
+                assertSame(expectThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true)), expected);
+                List<String> firstAttempt = switch (stage) {
+                    case "observe" -> List.of("observe");
+                    case "before" -> List.of("observe", "before");
+                    case "after" -> List.of("observe", "before", "after");
+                    default -> throw new AssertionError(stage);
+                };
+                assertEquals(events, firstAttempt, "Failed callback fabricated an answer or continued execution");
+                events.clear();
+                assertSame(controller.chooseStartingPlayer(false), game.getPlayers().get(0));
+                assertEquals(events, stage.equals("observe") ? List.of("observe", "before", "after") : List.of("before", "after"));
+            } finally { close(game); }
+        }
+    }
+
+    @Test public void startupIgnoresLegacyFailuresButRejectsClosedObservation() {
+        Recording recording = new Recording();
+        Game game = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
+        var controller = game.getPlayers().get(0).getController();
+        try {
+            var previous = expectThrows(IllegalArgumentException.class, () -> controller.playChosenSpellAbility(null));
+            assertSame(controller.chooseStartingPlayer(true), game.getPlayers().get(0));
+            assertNull(recording.pending);
+            assertEquals(recording.beforeCalls, 1);
+            assertEquals(recording.afterCalls, 1);
+            assertSame(expectThrows(IllegalArgumentException.class, controller::chooseSpellAbilityToPlay), previous,
+                    "Deferred boundaries must keep their current error behavior");
+        } finally { close(game); }
+        assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
+        assertEquals(recording.beforeCalls, 1, "Closed observation must not open a question");
+        assertEquals(recording.afterCalls, 1);
     }
 
     @Test public void adapterInterfacesKeepBindingsLocalToEachGame() {
@@ -263,16 +312,19 @@ public class StartingPlayerTest {
             var current = new StartingPlayerRequest(replay.getRegisteredPlayers().get(0), replayView, true);
             Player original = teacher.getPlayers().get(1);
             Player replacement = replay.getPlayers().get(1);
-            DecisionRecorder recorder = new StartingPlayerRecorder(recorded, original);
-            List<Integer> answer = recorder.encode();
+            DecisionRecorder<StartingPlayerRequest, Player> recorder = new StartingPlayerRecorder()::encode;
+            List<Integer> answer = recorder.encode(recorded, original);
             assertEquals(answer, List.of(1));
             assertThrows(UnsupportedOperationException.class, () -> answer.add(0));
             DecisionExecutor<Player> executor = new StartingPlayerExecutor(current, answer);
             assertNotSame(original, replacement);
             assertSame(executor.apply(), replacement);
-            assertThrows(IllegalArgumentException.class, () -> new StartingPlayerRecorder(recorded, replacement).encode());
+            assertThrows(IllegalArgumentException.class, () -> recorder.encode(recorded, replacement));
             assertThrows(IllegalArgumentException.class, () -> new StartingPlayerExecutor(current, List.of(0, 1)).apply());
-            assertEquals(recorder.encode(), answer, "Replay changed the original recorder's bindings");
+            assertEquals(recorder.encode(recorded, teacher.getPlayers().get(0)), List.of(0), "Recorder retained a previous answer");
+            assertEquals(recorder.encode(current, replacement), answer, "Recorder retained a previous request");
+            assertThrows(IllegalArgumentException.class, () -> recorder.encode(current, original));
+            assertEquals(recorder.encode(recorded, original), answer, "Replay changed the original recorder's bindings");
         } finally { teacherView.close(); replayView.close(); }
     }
 
@@ -319,14 +371,14 @@ public class StartingPlayerTest {
             @Override public void after(List<Integer> answer) { throw new IllegalStateException("recorder failed"); }
         };
         Game game = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
-        Player player = game.getRegisteredPlayers().get(1);
-        assertThrows(IllegalStateException.class, () -> player.getController().chooseStartingPlayer(false));
+        assertThrows(IllegalStateException.class, () -> game.getAction().startGame(null));
         assertNotNull(recording.pending);
-        assertEquals(((Map<?, ?>) recording.pending.get("options")).get("isFirstGame"), false);
+        assertEquals(((Map<?, ?>) recording.pending.get("options")).get("isFirstGame"), true);
         assertNull(recording.answer);
-        assertThrows(IllegalStateException.class, () -> player.getController().chooseStartingPlayer(false));
-        assertThrows(IllegalStateException.class, () -> player.getController().awaitNextInput());
         assertEquals(recording.beforeCalls, 1);
+        assertNull(game.getStartingPlayer());
+        assertNull(game.getPhaseHandler().getPhase());
+        assertFalse(game.isGameOver());
         close(game);
 
         int[] attempts = {0};
@@ -352,6 +404,8 @@ public class StartingPlayerTest {
         var test = new StartingPlayerTest();
         test.startingChoiceDependsOnPlayersAndFirstGameRatherThanFixtureContext();
         test.nonDuelObservationAndNestedStartingChoicesStopBeforeAnotherQuestion();
+        test.startupScopeIsRestoredWhenCallbacksThrow();
+        test.startupIgnoresLegacyFailuresButRejectsClosedObservation();
         test.adapterInterfacesKeepBindingsLocalToEachGame();
         test.nativeStartupWaitsWithoutOpponentQuestionAndAppliesPlayOrDraw();
         test.teacherKeepsOriginalFinalPlayerStateAndRngAndReplaysOnNewPlayers();

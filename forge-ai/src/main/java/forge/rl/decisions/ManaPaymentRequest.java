@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Fixed mana payment: final activation order, spend order and native result, without AI plans. */
-public final class ManaPaymentRequest {
+public final class ManaPaymentRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final SpellAbility root;
@@ -343,4 +343,6 @@ public final class ManaPaymentRequest {
     boolean canPayActivationTapCost(SpellAbility ability, CostTap tap) {
         return ability.canPlay() && tap.canPay(ability, player, false);
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

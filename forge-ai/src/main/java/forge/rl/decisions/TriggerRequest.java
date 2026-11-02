@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Order exact mandatory ETB wrappers; automatic effects and resolution stay in Forge. */
-public final class TriggerRequest {
+public final class TriggerRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Binding> bindings;
@@ -208,4 +208,6 @@ public final class TriggerRequest {
                 && top.getActivatingPlayer() == player && ability.getActivatingPlayer() == player
                 && ability.getHostCard() == top.getHostCard();
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

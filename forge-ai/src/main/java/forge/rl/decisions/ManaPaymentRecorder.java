@@ -5,8 +5,8 @@ import forge.game.spellability.SpellAbility;
 import java.util.ArrayList;
 import java.util.List;
 
-public record ManaPaymentRecorder(ManaPaymentRequest request, boolean paid) implements DecisionRecorder {
-    @Override public List<Integer> encode() {
+public record ManaPaymentRecorder() implements DecisionRecorder<ManaPaymentRequest, Boolean> {
+    @Override public List<Integer> encode(ManaPaymentRequest request, Boolean paid) {
         List<Integer> answer = new ArrayList<>(List.of(paid ? 1 : 0, request.root.getPayingManaAbilities().size()));
         for (SpellAbility ability : request.root.getPayingManaAbilities()) {
             int index = request.sources.indexOf(ability);

@@ -1,11 +1,12 @@
 package forge.rl.decisions;
 
+import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import java.util.List;
 
-public record CombatGraveyardRecorder(CombatGraveyardRequest request, CardCollectionView chosen) implements DecisionRecorder {
-    @Override public List<Integer> encode() {
+public record CombatGraveyardRecorder() implements DecisionRecorder<CombatGraveyardRequest, CardCollectionView> {
+    @Override public List<Integer> encode(CombatGraveyardRequest request, CardCollectionView chosen) {
         request.requireContext();
-        return new SelectionRecorder<>(request.selection, chosen).encode();
+        return new SelectionRecorder<Card>().encode(request.selection, chosen);
     }
 }

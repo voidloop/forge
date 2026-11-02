@@ -237,7 +237,7 @@ public class HelpfulHunterTest {
         var request = new TriggerRequest(f.player(), view, List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
-        assertThrows(IllegalStateException.class, () -> new TriggerRecorder(request).encode());
+        assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));
         Card source = wrapper.getHostCard();
         var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
             f.player().getZone(ZoneType.Battlefield).remove(source);

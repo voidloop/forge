@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
-public final class PriorityRequest {
+public final class PriorityRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Choice> bindings = new ArrayList<>();
@@ -347,4 +347,6 @@ public final class PriorityRequest {
         return answer.size() != (choice.targets == null ? 1 : 2)
                 || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size());
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

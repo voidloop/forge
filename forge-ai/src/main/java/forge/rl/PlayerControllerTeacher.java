@@ -14,6 +14,7 @@ import forge.rl.decisions.StartingPlayerRequest;
 import forge.rl.decisions.TriggerRequest;
 import forge.rl.decisions.StartingPlayerRecorder;
 import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.DecisionRequest;
 import forge.rl.decisions.MulliganKeepRecorder;
 import forge.rl.decisions.SelectionRecorder;
 import forge.rl.decisions.AttackersRecorder;
@@ -46,8 +47,6 @@ import forge.util.collect.FCollectionView;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /** Records supported final decisions, including subordinate mana colors, through the public API. */
@@ -57,6 +56,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private String activeKind;
     private final StateReader observation;
     private boolean observationStarted;
+    private boolean observationClosed;
     private RuntimeException failure;
     private PriorityRequest.Choice pendingPriority;
     private PriorityRequest.Choice activePriority;
@@ -80,6 +80,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     public void closeObservation() {
         try { callback.close(); }
         finally {
+            observationClosed = true;
             observation.close();
             if (failure == null) { failure = new IllegalStateException("Controller observation is closed"); }
         }
@@ -93,63 +94,168 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
-        return record(null, "starting_player", () -> new StartingPlayerRequest(player, observation, isFirstGame),
-                request -> request.data, () -> super.chooseStartingPlayer(isFirstGame), StartingPlayerRecorder::new, true);
+        return withDecision("starting_player", () -> record(
+                () -> new StartingPlayerRequest(player, observation, isFirstGame),
+                () -> super.chooseStartingPlayer(isFirstGame),
+                new StartingPlayerRecorder()));
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
-        return record(null, "mulligan_keep", () -> MulliganRequests.keep(player, observation, first, cardsToReturn),
-                request -> request, () -> super.mulliganKeepHand(first, cardsToReturn),
-                (request, keep) -> new MulliganKeepRecorder(keep), true);
+        return withDecision("mulligan_keep", () -> record(
+                () -> MulliganRequests.keep(player, observation, first, cardsToReturn),
+                () -> super.mulliganKeepHand(first, cardsToReturn),
+                new MulliganKeepRecorder()));
     }
 
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
-        return record(null, "mulligan_tuck", () -> MulliganRequests.tuck(player, observation, hand, cardsToReturn),
-                request -> request.data, () -> super.tuckCardsViaMulligan(hand, cardsToReturn),
-                SelectionRecorder::new, cardsToReturn != 0);
+        return withDecision("mulligan_tuck", () -> record(
+                () -> MulliganRequests.tuck(player, observation, hand, cardsToReturn),
+                () -> super.tuckCardsViaMulligan(hand, cardsToReturn), new SelectionRecorder<Card>()::encode,
+                cardsToReturn != 0));
     }
 
-    private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<SelectionRequest<T>> question,
-            Supplier<R> original, Function<R, Iterable<T>> selected) {
-        return record(ability, kind, question, request -> request.data, original,
-                (request, result) -> new SelectionRecorder<>(request, selected.apply(result)), true);
+    private <R extends DecisionRequest, A> A record(
+            Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder) {
+        return record(prepare, original, recorder, true);
     }
 
-    private <Q, R> R record(SpellAbility ability, String kind, Supplier<Q> question,
-            Function<Q, Map<String, Object>> data, Supplier<R> original, BiFunction<Q, R, DecisionRecorder> recorder,
-            boolean hasQuestion) {
-        if (failure != null) { throw failure; }
-        if (isStartupDecisionBlocked(kind)) {
-            failure = new IllegalStateException("Previous teacher decision is still active");
-            throw failure;
+    private <R extends DecisionRequest, A> A record(
+            Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder, boolean emitCallbacks) {
+        R request = prepare.get();
+        if (emitCallbacks) { callback.before(request.data()); }
+        A answer = original.get();
+        List<Integer> encoded = recorder.encode(request, answer);
+        if (emitCallbacks) { callback.after(encoded); }
+        return answer;
+    }
+
+    private <A> A withDecision(String kind, Supplier<A> operation) {
+        if (hasUnfinishedAction()) {
+            throw new IllegalStateException("Previous teacher decision is still active");
         }
+        String previousKind = activeKind;
+        activeKind = kind;
+        try {
+            if (observationClosed) { throw new IllegalStateException("Controller observation is closed"); }
+            if (!observationStarted) {
+                callback.observe(observation);
+                observationStarted = true;
+            }
+            return operation.get();
+        } finally { activeKind = previousKind; }
+    }
+
+    private <R extends DecisionRequest, A> A recordLegacy(
+            String name, Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder) {
+        return recordLegacy(name, prepare, original, recorder, true);
+    }
+
+    private <R extends DecisionRequest, A> A recordLegacy(
+            String name, Supplier<R> prepare, Supplier<A> original, DecisionRecorder<R, A> recorder,
+            boolean emitCallbacks) {
+        return withLegacyDecision(() -> {
+            try {
+                beginDecision(name);
+                R request = prepare.get();
+                if (!name.equals("mana_payment")) { activeKind = name; }
+                if (emitCallbacks) { callback.before(request.data()); }
+                A answer = original.get();
+                if (!isStartupDecision(name)) { requireHealthy(); }
+                List<Integer> encoded = recorder.encode(request, answer);
+                if (emitCallbacks) { callback.after(encoded); }
+                return answer;
+            } catch (RuntimeException error) {
+                if (!isStartupDecision(name)) { failure = error; }
+                throw error;
+            }
+        });
+    }
+
+    private <A> A withLegacyDecision(Supplier<A> operation) {
+        String previousKind = activeKind;
+        SpellAbility previousAbility = activeAbility;
+        ManaPaymentRequest previousPayment = payment;
+        TriggerRequest previousTrigger = activeTrigger;
+        try { return operation.get(); }
+        finally {
+            activeKind = previousKind;
+            activeAbility = previousAbility;
+            payment = previousPayment;
+            activeTrigger = previousTrigger;
+        }
+    }
+
+    private void beginDecision(String name) {
+        if (!isStartupDecision(name)) { requireHealthy(); }
+        requireDecisionContext(name);
+        if (bindsBeforeObservation(name)) { activeKind = name; }
+        if (!name.equals("mana_color")) { startObservation(); }
+    }
+
+    private <R extends DecisionRequest, A> A recordLegacy(SpellAbility ability, String name, Supplier<R> prepare,
+            Supplier<A> original, DecisionRecorder<R, A> recorder) {
+        requireHealthy();
         // Native multiple selections call the public single selector internally.
         if (activeKind != null) {
-            if (!isNestedSingleSelection(ability, kind)) {
+            if (!isNestedSingleSelection(ability, name)) {
                 failure = new UnsupportedOperationException("Unexpected nested teacher selection");
                 throw failure;
             }
             try { return original.get(); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
-        activeAbility = ability;
-        activeKind = kind;
-        try {
-            startObservation();
-            Q request = question.get();
-            if (hasQuestion) { callback.before(data.apply(request)); }
-            R result = original.get();
-            if (failure != null) { throw failure; }
-            var answer = recorder.apply(request, result).encode();
-            if (hasQuestion) { callback.after(answer); }
-            return result;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeAbility = null; activeKind = null; }
+        return withLegacyDecision(() -> {
+            activeAbility = ability;
+            return recordLegacy(name, prepare, original, recorder);
+        });
     }
 
-    private boolean isStartupDecisionBlocked(String kind) {
-        return isStartupDecision(kind) && (activeKind != null || pendingPriority != null
-                || pendingMana != null || activeMana != null || activePriority != null);
+    private void requireHealthy() {
+        if (failure != null) { throw failure; }
+    }
+
+    private void requireDecisionContext(String name) {
+        switch (name) {
+            case "trigger_prepare" -> {
+                if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger preparation"); }
+            }
+            case "mana_color" -> {
+                if (hasUnboundManaColor()) { throw new UnsupportedOperationException("Unbound teacher mana color"); }
+            }
+            case "mana_payment" -> {
+                if (hasNestedManaPayment()) { throw new UnsupportedOperationException("Nested teacher mana payment"); }
+            }
+            default -> {
+                if (isExclusiveDecisionBlocked(name)) {
+                    throw new IllegalStateException("Previous teacher decision is still active");
+                }
+            }
+        }
+    }
+
+    private boolean hasUnfinishedAction() {
+        return activeKind != null || pendingPriority != null || pendingMana != null
+                || activeMana != null || activePriority != null;
+    }
+
+    private boolean isExclusiveDecisionBlocked(String name) {
+        return !isSelectionDecision(name) && hasUnfinishedAction();
+    }
+
+    private boolean hasUnboundManaColor() {
+        return activeMana == null || activeKind != null;
+    }
+
+    private boolean hasNestedManaPayment() {
+        return payment != null || activeKind != null || activeMana != null || pendingPriority != null || pendingMana != null;
+    }
+
+    private boolean bindsBeforeObservation(String name) {
+        return isStartupDecision(name) || isSelectionDecision(name);
+    }
+
+    private boolean isSelectionDecision(String name) {
+        return name.equals("single_entity") || name.equals("cards") || name.equals("entities") || name.equals("discard_cleanup");
     }
 
     private boolean isStartupDecision(String kind) {
@@ -162,131 +268,66 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return record(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
-                () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), answer -> answer);
+        return recordLegacy(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
+                () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public void declareAttackers(Player attacker, Combat combat) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            var request = new AttackersRequest(player, observation, attacker, combat);
-            activeKind = "declare_attackers";
-            callback.before(request.data);
-            super.declareAttackers(attacker, combat);
-            if (failure != null) { throw failure; }
-            callback.after(new AttackersRecorder(request).encode());
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        recordLegacy("declare_attackers", () -> new AttackersRequest(player, observation, attacker, combat),
+                () -> { super.declareAttackers(attacker, combat); return null; }, new AttackersRecorder());
     }
 
     @Override public void declareBlockers(Player defender, Combat combat) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            var request = new BlockersRequest(player, observation, defender, combat);
-            activeKind = "declare_blockers";
-            callback.before(request.data);
-            super.declareBlockers(defender, combat);
-            if (failure != null) { throw failure; }
-            callback.after(new BlockersRecorder(request).encode());
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        recordLegacy("declare_blockers", () -> new BlockersRequest(player, observation, defender, combat),
+                () -> { super.declareBlockers(defender, combat); return null; }, new BlockersRecorder());
     }
 
     @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
             int damage, GameEntity defender, boolean overrideOrder) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            var request = new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder);
-            activeKind = "combat_damage";
-            callback.before(request.data);
-            var chosen = super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder);
-            if (failure != null) { throw failure; }
-            callback.after(new CombatDamageRecorder(request, chosen).encode());
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return recordLegacy("combat_damage",
+                () -> new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder),
+                () -> super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder),
+                new CombatDamageRecorder());
     }
 
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            var request = new CombatGraveyardRequest(player, observation, cards, destinationZone, source);
-            activeKind = "combat_graveyard_order";
-            callback.before(request.data);
-            var chosen = super.orderMoveToZoneList(cards, destinationZone, source);
-            if (failure != null) { throw failure; }
-            callback.after(new CombatGraveyardRecorder(request, chosen).encode());
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return recordLegacy("combat_graveyard_order", () -> new CombatGraveyardRequest(player, observation, cards, destinationZone, source),
+                () -> super.orderMoveToZoneList(cards, destinationZone, source), new CombatGraveyardRecorder());
     }
 
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            if (ManaRequest.hasSource(player)) {
-                ManaRequest request = new ManaRequest(player, observation);
-                activeKind = "priority_mana";
-                callback.before(request.data);
-                List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
-                if (failure != null) { throw failure; }
-                List<Integer> answer = new ManaRecorder(request, chosen).encode();
-                pendingMana = chosen == null ? null : request.selected();
-                callback.after(answer);
-                return chosen;
-            }
-            PriorityRequest request = new PriorityRequest(player, observation);
-            activeKind = "priority";
-            callback.before(request.data);
-            List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
-            if (failure != null) { throw failure; }
-            List<Integer> answer = new PriorityRecorder(request, chosen).encode();
-            pendingPriority = request.bindChoice(answer);
-            callback.after(answer);
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeAbility = null; activeKind = null; }
+        requireHealthy();
+        return withLegacyDecision(() -> {
+            try {
+                requireDecisionContext("priority");
+                startObservation();
+                if (ManaRequest.hasSource(player)) {
+                    return recordLegacy("priority_mana", () -> new ManaRequest(player, observation),
+                            () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
+                                List<Integer> answer = new ManaRecorder().encode(request, chosen);
+                                pendingMana = chosen == null ? null : request.selected();
+                                return answer;
+                            });
+                }
+                return recordLegacy("priority", () -> new PriorityRequest(player, observation),
+                        () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
+                            List<Integer> answer = new PriorityRecorder().encode(request, chosen);
+                            pendingPriority = request.bindChoice(answer);
+                            return answer;
+                        });
+            } catch (RuntimeException error) { failure = error; throw error; }
+        });
     }
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
-        if (failure != null) { throw failure; }
-        try {
-            if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger preparation"); }
-            startObservation();
-            var request = new TriggerRequest(player, observation, abilities);
-            activeTrigger = request;
-            activeKind = "trigger_prepare";
-            callback.before(request.data);
-            super.orderAndPlaySimultaneousSa(abilities);
-            if (failure != null) { throw failure; }
-            callback.after(new TriggerRecorder(request).encode());
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeTrigger = null; activeKind = null; }
+        recordLegacy("trigger_prepare", () -> {
+            activeTrigger = new TriggerRequest(player, observation, abilities);
+            return activeTrigger;
+        }, () -> { super.orderAndPlaySimultaneousSa(abilities); return null; }, new TriggerRecorder());
     }
 
     private boolean hasActiveDecision() {
-        return activeKind != null || pendingPriority != null || pendingMana != null
-                || activeMana != null || activePriority != null || payment != null || activeTrigger != null;
+        return hasUnfinishedAction() || payment != null || activeTrigger != null;
     }
 
     @Override public List<SpellAbility> orderSimultaneousSa(List<SpellAbility> abilities) {
@@ -341,41 +382,21 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public byte chooseColor(String message, SpellAbility ability, ColorSet colors) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeMana == null || activeKind != null) { throw new UnsupportedOperationException("Unbound teacher mana color"); }
-            var request = activeMana.colorRequest(player, observation, message, ability, colors);
-            activeKind = "mana_color";
-            callback.before(request);
-            byte chosen = super.chooseColor(message, ability, colors);
-            if (failure != null) { throw failure; }
-            callback.after(new ManaColorRecorder(activeMana, chosen).encode());
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return recordLegacy("mana_color", () -> activeMana.colorRequest(player, observation, message, ability, colors),
+                () -> super.chooseColor(message, ability, colors), new ManaColorRecorder());
     }
 
     @Override public boolean payManaCost(ManaCost cost, CostPartMana part, SpellAbility ability,
             String prompt, ManaConversionMatrix matrix, boolean effect) {
-        if (failure != null) { throw failure; }
+        requireHealthy();
         if (isBoundZeroPayment(cost, ability)) {
             try { return super.payManaCost(cost, part, ability, prompt, matrix, effect); }
             catch (RuntimeException error) { failure = error; throw error; }
         }
-        try {
-            if (payment != null || activeKind != null || activeMana != null || pendingPriority != null || pendingMana != null) {
-                throw new UnsupportedOperationException("Nested teacher mana payment");
-            }
-            startObservation();
-            var request = new ManaPaymentRequest(player, observation, cost, part, ability, matrix, effect);
-            payment = request;
-            callback.before(request.data);
-            boolean paid = super.payManaCost(cost, part, ability, prompt, matrix, effect);
-            if (failure != null) { throw failure; }
-            callback.after(new ManaPaymentRecorder(request, paid).encode());
-            return paid;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { payment = null; }
+        return recordLegacy("mana_payment", () -> {
+            payment = new ManaPaymentRequest(player, observation, cost, part, ability, matrix, effect);
+            return payment;
+        }, () -> super.payManaCost(cost, part, ability, prompt, matrix, effect), new ManaPaymentRecorder());
     }
 
     private boolean isBoundZeroPayment(ManaCost cost, SpellAbility ability) {
@@ -392,20 +413,20 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return record(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
+        return recordLegacy(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params),
-                answer -> answer == null ? List.of() : List.of(answer));
+                (request, answer) -> new SelectionRecorder<T>().encode(request, answer == null ? List.of() : List.of(answer)));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return record(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
-                () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), answer -> answer);
+        return recordLegacy(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
+                () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return record(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
-                () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), answer -> answer);
+        return recordLegacy(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
+                () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), new SelectionRecorder<T>()::encode);
     }
 }

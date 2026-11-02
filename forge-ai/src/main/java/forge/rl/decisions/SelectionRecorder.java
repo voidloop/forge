@@ -5,8 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public record SelectionRecorder<T extends GameEntity>(SelectionRequest<T> request, Iterable<T> selected) implements DecisionRecorder {
-    @Override public List<Integer> encode() {
+public record SelectionRecorder<T extends GameEntity>() implements DecisionRecorder<SelectionRequest<T>, Iterable<T>> {
+    @Override public List<Integer> encode(SelectionRequest<T> request, Iterable<T> selected) {
         Objects.requireNonNull(selected, "Missing native selection");
         List<Integer> indices = new ArrayList<>();
         for (T entity : selected) {

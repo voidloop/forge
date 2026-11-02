@@ -91,6 +91,57 @@ public class PlayerControllerTeacherTest {
         assertEquals(cursor[0], recording.entries.size());
     }
 
+    @Test public void rejectedNestedStartupPreservesOuterSelectionScope() {
+        Recording recording = new Recording();
+        NativeDecisionOptionsTest.Fixture[] current = {null};
+        current[0] = NativeDecisionOptionsTest.fixture(new LobbyPlayerTeacher("first", new IDecisionRecordCallback() {
+            @Override public void before(Map<String, Object> request) {
+                recording.before(request);
+                var player = current[0].actor();
+                var controller = player.getController();
+                assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
+                assertThrows(IllegalStateException.class, () -> controller.tuckCardsViaMulligan(player.getCardsIn(ZoneType.Hand), 0));
+            }
+            @Override public void after(List<Integer> answer) { recording.after(answer); }
+        }));
+        try {
+            MyRandom.setRandom(new Random(0));
+            execute(current[0]);
+            assertNull(recording.pending);
+            assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("options")).get("kind")).toList(),
+                    List.of("single_entity", "cards", "entities", "entities", "cards"));
+            assertEquals(recording.entries.get(1).answer().size(), 2);
+        } finally { ((PlayerControllerTeacher) current[0].actor().getController()).closeObservation(); }
+    }
+
+    @Test public void nestedSelectionsRequireTheExactOuterAbility() {
+        Recording recording = new Recording();
+        NativeDecisionOptionsTest.Fixture[] current = {null};
+        RuntimeException[] rejected = {null};
+        current[0] = NativeDecisionOptionsTest.fixture(new LobbyPlayerTeacher("first", new IDecisionRecordCallback() {
+            @Override public void before(Map<String, Object> request) {
+                recording.before(request);
+                var fixture = current[0];
+                var foreign = forge.game.ability.AbilityFactory.getAbility(
+                        "DB$ ChooseCard | Choices$ Creature.YouCtrl | Amount$ 1", fixture.host());
+                rejected[0] = expectThrows(UnsupportedOperationException.class, () -> fixture.actor().getController()
+                        .chooseSingleEntityForEffect(new forge.util.collect.FCollection<>(List.of(fixture.first())),
+                                null, foreign, "foreign nested ability", false, null, null));
+            }
+            @Override public void after(List<Integer> answer) { recording.after(answer); }
+        }));
+        try {
+            var fixture = current[0];
+            var error = expectThrows(UnsupportedOperationException.class, () -> NativeDecisionOptionsTest.resolve(
+                    fixture.host(), fixture.actor(), "DB$ ChooseCard | Choices$ Creature.YouCtrl | Amount$ 2 | Mandatory$ True"));
+            assertSame(error, rejected[0]);
+            assertNotNull(recording.pending);
+            assertTrue(recording.entries.isEmpty());
+            assertSame(expectThrows(UnsupportedOperationException.class,
+                    fixture.actor().getController()::chooseSpellAbilityToPlay), error);
+        } finally { ((PlayerControllerTeacher) current[0].actor().getController()).closeObservation(); }
+    }
+
     @Test public void nativeFailuresLeavePendingQuestionsAndStopTeacher() {
         Recording recording = new Recording();
         var fixture = NativeDecisionOptionsTest.fixture(new LobbyPlayerTeacher("first", recording));
@@ -163,6 +214,35 @@ public class PlayerControllerTeacherTest {
         }
     }
 
+    @Test public void priorityCallbackFailuresRemainPersistentAndStopTheSharedCycle() {
+        for (String stage : List.of("observe", "before", "after")) {
+            List<String> events = new ArrayList<>();
+            var expected = new IllegalStateException("Failed " + stage);
+            var fixture = priorityFixture(new LobbyPlayerTeacher("first", new IDecisionRecordCallback() {
+                private void visit(String current) {
+                    events.add(current);
+                    if (current.equals(stage)) { throw expected; }
+                }
+                @Override public void observe(StateReader reader) { visit("observe"); }
+                @Override public void before(Map<String, Object> request) { visit("before"); }
+                @Override public void after(List<Integer> answer) { visit("after"); }
+            }), 0);
+            try {
+                var controller = fixture.player().getController();
+                assertSame(expectThrows(IllegalStateException.class, controller::chooseSpellAbilityToPlay), expected);
+                List<String> prefix = switch (stage) {
+                    case "observe" -> List.of("observe");
+                    case "before" -> List.of("observe", "before");
+                    case "after" -> List.of("observe", "before", "after");
+                    default -> throw new AssertionError(stage);
+                };
+                assertEquals(events, prefix);
+                assertSame(expectThrows(IllegalStateException.class, controller::chooseSpellAbilityToPlay), expected);
+                assertEquals(events, prefix, "A failed teacher reopened a question");
+            } finally { ((PlayerControllerTeacher) fixture.player().getController()).closeObservation(); }
+        }
+    }
+
     @Test public void priorityErrorsRemainDistinctFromAnswersAndExecution() {
         Recording staleRecording = new Recording();
         var stale = priorityFixture(new LobbyPlayerTeacher("first", staleRecording), 0);
@@ -213,8 +293,8 @@ public class PlayerControllerTeacherTest {
         var activator = ability.getActivatingPlayer();
         PriorityRequest question = new PriorityRequest(fixture.player(), new StateReader(fixture.player(), 0L));
         assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
-        assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder(question, List.of()).encode());
-        assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder(question, List.of(choice.get(0))).encode());
+        assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder().encode(question, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder().encode(question, List.of(choice.get(0))));
         for (var player : List.of(stale.player(), repeated.player(), unbound.player(), bad.player(), broken.player())) {
             ((PlayerControllerTeacher) player.getController()).closeObservation();
         }
@@ -229,8 +309,11 @@ public class PlayerControllerTeacherTest {
         OriginalCompositeChoice.initialize(root);
         var test = new PlayerControllerTeacherTest();
         test.recordsFinalAnswersNeutrallyAndReplaysOnNewObjects();
+        test.rejectedNestedStartupPreservesOuterSelectionScope();
+        test.nestedSelectionsRequireTheExactOuterAbility();
         test.nativeFailuresLeavePendingQuestionsAndStopTeacher();
         test.priorityIsNeutralAndReplaysBeforeAndAfterLandExecution();
+        test.priorityCallbackFailuresRemainPersistentAndStopTheSharedCycle();
         test.priorityErrorsRemainDistinctFromAnswersAndExecution();
         System.out.println("PASS: selection teacher is neutral to native facts/RNG; final answers replay on new objects without AI; errors stay incomplete");
     }

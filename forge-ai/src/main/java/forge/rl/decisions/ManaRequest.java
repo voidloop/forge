@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
-public final class ManaRequest {
+public final class ManaRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Choice choice;
 
@@ -96,6 +96,8 @@ public final class ManaRequest {
         return answer.get(0);
     }
 
+    public record ColorRequest(Choice choice, Map<String, Object> data) implements DecisionRequest { }
+
     public static final class Choice {
         public final SpellAbility ability;
         final Card card;
@@ -125,14 +127,14 @@ public final class ManaRequest {
 
         ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
-        public Map<String, Object> colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
+        public ColorRequest colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
             if (hasUnboundColorRequest(player, source)) {
                 throw new IllegalStateException("Unbound or repeated mana color question");
             }
             samePriority(player);
             if (offered.getColor() != colors().getColor()) { throw new UnsupportedOperationException("AI-restricted mana menu must not be exported"); }
-            return Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_color", "source", view.reference(card),
-                    "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList()));
+            return new ColorRequest(this, Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_color", "source", view.reference(card),
+                    "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList())));
         }
 
         private void samePriority(Player player) {
@@ -208,4 +210,6 @@ public final class ManaRequest {
         return answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
                 || answer.get(0) < 0 || answer.get(0) >= count;
     }
+
+    @Override public Map<String, Object> data() { return data; }
 }

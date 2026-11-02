@@ -245,7 +245,7 @@ public class MulliganTest {
                     default -> throw new AssertionError(invalid);
                 };
                 assertThrows(RuntimeException.class, attempt::run);
-                assertThrows(RuntimeException.class, controller::awaitNextInput);
+                if (!teacher) { assertThrows(RuntimeException.class, controller::awaitNextInput); }
                 assertEquals(calls[0], 0);
                 assertEquals(facts(game), before);
                 assertFalse(game.isGameOver());
@@ -263,6 +263,7 @@ public class MulliganTest {
         assertTrue(player.getController().mulliganKeepHand(player, 7));
         assertTrue(player.getController().tuckCardsViaMulligan(player.getCardsIn(ZoneType.Hand), 0).isEmpty());
         assertEquals(saved.requests.size(), 1);
+        assertNull(saved.pending, "Zero tuck must not open a callback question");
         assertEquals(((Map<?, ?>) saved.requests.get(0).get("options")).get("cardsToReturn"), 7);
         int[] calls = {0};
         Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
@@ -297,7 +298,7 @@ public class MulliganTest {
                             if (tuck) { controller.tuckCardsViaMulligan(new CardCollection(), 0); }
                             else { controller.mulliganKeepHand(game.getPlayers().get(0), 0); }
                         });
-                        assertThrows(UnsupportedOperationException.class, controller::awaitNextInput);
+                        if (!teacher) { assertThrows(UnsupportedOperationException.class, controller::awaitNextInput); }
                     } finally {
                         StaticData.instance().setFilteredHandsEnabled(false);
                         StaticData.instance().setMulliganRule(MulliganDefs.MulliganRule.London);
@@ -315,16 +316,13 @@ public class MulliganTest {
                 @Override public void before(Map<String, Object> data) {
                     super.before(data);
                     Player p = nested[0].getPlayers().get(0);
-                    assertThrows(IllegalStateException.class, () -> {
-                        if (tuck) { p.getController().tuckCardsViaMulligan(p.getCardsIn(ZoneType.Hand), 0); }
-                        else { p.getController().mulliganKeepHand(p, 0); }
-                    });
+                    if (tuck) { p.getController().tuckCardsViaMulligan(p.getCardsIn(ZoneType.Hand), 0); }
+                    else { p.getController().mulliganKeepHand(p, 0); }
                 }
             };
             nested[0] = contractFixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), "limited");
             var controller = nested[0].getPlayers().get(0).getController();
             assertThrows(IllegalStateException.class, () -> controller.mulliganKeepHand(nested[0].getPlayers().get(0), 0));
-            assertThrows(IllegalStateException.class, controller::awaitNextInput);
             assertNotNull(saved.pending);
             assertTrue(saved.answers.isEmpty());
             close(nested[0]);
@@ -347,10 +345,39 @@ public class MulliganTest {
                     if (tuck) { p.getController().tuckCardsViaMulligan(p.getCardsIn(ZoneType.Hand), 0); }
                     else { p.getController().mulliganKeepHand(p, 0); }
                 });
-                assertThrows(IllegalStateException.class, p.getController()::awaitNextInput);
+                if (!teacher) { assertThrows(IllegalStateException.class, p.getController()::awaitNextInput); }
                 assertEquals(teacher ? pending.requests.size() + (pending.pending == null ? 0 : 1) : clientCalls[0], 1);
                 close(game);
             }
+        }
+    }
+
+    @Test public void mulliganRecorderFailureReachesTheNativeStartupCaller() {
+        for (boolean tuck : List.of(false, true)) {
+            String kind = tuck ? "mulligan_tuck" : "mulligan_keep";
+            var failure = new IllegalArgumentException("mulligan recorder failed");
+            Recording saved = new Recording() {
+                @Override public void after(List<Integer> answer) {
+                    if (((Map<?, ?>) pending.get("options")).get("kind").equals(kind)) { throw failure; }
+                    super.after(answer);
+                }
+            };
+            Game game = fixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), tuck);
+            FirstPriority boundary = new FirstPriority(game);
+            game.subscribeToEvents(boundary);
+            MyRandom.setRandom(new Random(42));
+            try {
+                game.getAction().startGame(null);
+                fail("A mulligan recording error must stop the game loop");
+            } catch (IllegalArgumentException error) { assertSame(error, failure); }
+            assertFalse(boundary.reached);
+            assertFalse(game.isGameOver());
+            assertEquals(game.getAge(), GameStage.Mulligan);
+            assertNotNull(saved.pending);
+            assertEquals(((Map<?, ?>) saved.pending.get("options")).get("kind"), kind);
+            assertEquals(saved.requests.size(), tuck ? 2 : 1, "Only completed choices before the failed record may be saved");
+            assertEquals(((Map<?, ?>) saved.requests.get(0).get("options")).get("kind"), "starting_player");
+            close(game);
         }
     }
 
@@ -425,6 +452,7 @@ public class MulliganTest {
         test.keepCountIsNotCappedToTheRemainingHandAndEmptyTuckIsSilent();
         test.londonWorkflowLimitsRemainExplicit();
         test.nestedTeacherLondonAndUnfinishedExecutionDoNotOpenAnotherQuestion();
+        test.mulliganRecorderFailureReachesTheNativeStartupCaller();
         test.nativeStartupTeacherNeutralityAndFreshReplay();
         test.clientDrawMultipleTucksAndInvalidAnswers();
         System.out.println("PASS: native London startup, teacher state/RNG and replay verified");
