@@ -94,52 +94,32 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
         return record(null, "starting_player", () -> new StartingPlayerRequest(player, observation, isFirstGame),
-                request -> request.data, () -> super.chooseStartingPlayer(isFirstGame), StartingPlayerRecorder::new);
+                request -> request.data, () -> super.chooseStartingPlayer(isFirstGame), StartingPlayerRecorder::new, true);
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null) { throw new IllegalStateException("Nested mulligan decision"); }
-            startObservation();
-            var request = MulliganRequests.keep(player, observation, first, cardsToReturn);
-            activeKind = "mulligan_keep";
-            callback.before(request);
-            boolean keep = super.mulliganKeepHand(first, cardsToReturn);
-            if (failure != null) { throw failure; }
-            callback.after(new MulliganKeepRecorder(keep).encode());
-            return keep;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return record(null, "mulligan_keep", () -> MulliganRequests.keep(player, observation, first, cardsToReturn),
+                request -> request, () -> super.mulliganKeepHand(first, cardsToReturn),
+                (request, keep) -> new MulliganKeepRecorder(keep), true);
     }
 
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null) { throw new IllegalStateException("Nested tuck decision"); }
-            startObservation();
-            var request = MulliganRequests.tuck(player, observation, hand, cardsToReturn);
-            activeKind = "mulligan_tuck";
-            if (cardsToReturn != 0) { callback.before(request.data); }
-            var chosen = super.tuckCardsViaMulligan(hand, cardsToReturn);
-            if (failure != null) { throw failure; }
-            var answer = new SelectionRecorder<>(request, chosen).encode();
-            if (cardsToReturn != 0) { callback.after(answer); }
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return record(null, "mulligan_tuck", () -> MulliganRequests.tuck(player, observation, hand, cardsToReturn),
+                request -> request.data, () -> super.tuckCardsViaMulligan(hand, cardsToReturn),
+                SelectionRecorder::new, cardsToReturn != 0);
     }
 
     private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<SelectionRequest<T>> question,
             Supplier<R> original, Function<R, Iterable<T>> selected) {
         return record(ability, kind, question, request -> request.data, original,
-                (request, result) -> new SelectionRecorder<>(request, selected.apply(result)));
+                (request, result) -> new SelectionRecorder<>(request, selected.apply(result)), true);
     }
 
     private <Q, R> R record(SpellAbility ability, String kind, Supplier<Q> question,
-            Function<Q, Map<String, Object>> data, Supplier<R> original, BiFunction<Q, R, DecisionRecorder> recorder) {
+            Function<Q, Map<String, Object>> data, Supplier<R> original, BiFunction<Q, R, DecisionRecorder> recorder,
+            boolean hasQuestion) {
         if (failure != null) { throw failure; }
-        if (isStartingPlayerBlocked(kind)) {
+        if (isStartupDecisionBlocked(kind)) {
             failure = new IllegalStateException("Previous teacher decision is still active");
             throw failure;
         }
@@ -157,18 +137,23 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         try {
             startObservation();
             Q request = question.get();
-            callback.before(data.apply(request));
+            if (hasQuestion) { callback.before(data.apply(request)); }
             R result = original.get();
             if (failure != null) { throw failure; }
-            callback.after(recorder.apply(request, result).encode());
+            var answer = recorder.apply(request, result).encode();
+            if (hasQuestion) { callback.after(answer); }
             return result;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeAbility = null; activeKind = null; }
     }
 
-    private boolean isStartingPlayerBlocked(String kind) {
-        return kind.equals("starting_player") && (activeKind != null || pendingPriority != null
+    private boolean isStartupDecisionBlocked(String kind) {
+        return isStartupDecision(kind) && (activeKind != null || pendingPriority != null
                 || pendingMana != null || activeMana != null || activePriority != null);
+    }
+
+    private boolean isStartupDecision(String kind) {
+        return kind.equals("starting_player") || kind.equals("mulligan_keep") || kind.equals("mulligan_tuck");
     }
 
     private boolean isNestedSingleSelection(SpellAbility ability, String kind) {

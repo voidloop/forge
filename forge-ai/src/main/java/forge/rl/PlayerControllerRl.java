@@ -391,6 +391,9 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
         checkActive();
         try {
+            if (hasUnfinishedDecision()) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
             return new MulliganKeepExecutor(response(MulliganRequests.keep(player, observation, first, cardsToReturn))).apply();
         } catch (RuntimeException error) { throw stop(error); }
@@ -398,6 +401,9 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
         checkActive();
         try {
+            if (hasUnfinishedDecision()) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
             var request = MulliganRequests.tuck(player, observation, hand, cardsToReturn);
             return new CardCollection(new SelectionExecutor<>(request, cardsToReturn == 0 ? List.of() : response(request.data)).apply());

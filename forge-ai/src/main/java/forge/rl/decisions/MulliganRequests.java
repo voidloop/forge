@@ -1,26 +1,20 @@
 package forge.rl.decisions;
 
 import forge.rl.StateReader;
-import forge.game.Game;
-
 import forge.StaticData;
 import forge.MulliganDefs;
-import forge.game.GameStage;
-import forge.game.GameType;
 import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.player.Player;
 import forge.game.zone.ZoneType;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
 public final class MulliganRequests {
     static void require(Player player) {
-        var game = player.getGame();
-        if (isOutsideLondonDuel(game)) {
+        if (isOutsideLondonDuel(player)) {
             throw new UnsupportedOperationException("Mulligan outside single-hand London duel");
         }
     }
@@ -44,23 +38,23 @@ public final class MulliganRequests {
                 false, null, null, null);
     }
 
-    private static boolean isOutsideLondonDuel(Game game) {
-        return game.getAge() != GameStage.Mulligan || game.getPhaseHandler().getPhase() != null
-                || game.getRules().getGameType() != GameType.Constructed
-                || game.getPlayers().size() != 2
-                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
+    private static boolean isOutsideLondonDuel(Player player) {
+        return player.getGame().getPlayers().size() != 2 || player.getOpponents().size() != 1
                 || StaticData.instance().getFilteredHandsEnabled()
-                || StaticData.instance().getMulliganRule() != MulliganDefs.MulliganRule.London
-                || game.getPlayers().stream().anyMatch(p -> !p.getCardsIn(ZoneType.Command).isEmpty());
+                || StaticData.instance().getMulliganRule() != MulliganDefs.MulliganRule.London;
     }
 
     private static boolean hasInvalidKeepContext(Player player, Player first, int count) {
-        return !player.getGame().getPlayers().contains(first) || count < 0;
+        return player.getGame().getPlayers().stream().noneMatch(candidate -> candidate == first) || count < 0;
     }
 
     private static boolean hasInvalidTuckContext(Player player, CardCollectionView hand, int count) {
         return count < 0 || count > hand.size()
                 || hand.size() != player.getCardsIn(ZoneType.Hand).size()
-                || !player.getCardsIn(ZoneType.Hand).containsAll(hand);
+                || hand.stream().anyMatch(card -> !isCurrentHandCard(player, card));
+    }
+
+    private static boolean isCurrentHandCard(Player player, Card card) {
+        return player.getCardsIn(ZoneType.Hand).stream().anyMatch(current -> current == card);
     }
 }
