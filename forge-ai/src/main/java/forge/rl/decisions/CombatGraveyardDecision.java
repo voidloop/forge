@@ -25,7 +25,7 @@ public final class CombatGraveyardDecision {
         this.player = player;
         this.combat = player.getGame().getCombat();
         this.cards = List.copyOf(cards);
-        if (destination != ZoneType.Graveyard || source != null || cards.size() < 2) {
+        if (!isSimultaneousCombatGraveyardOrder(cards, destination, source)) {
             throw new UnsupportedOperationException("Only simultaneous combat graveyard ordering");
         }
         requireContext();
@@ -34,18 +34,27 @@ public final class CombatGraveyardDecision {
         data = selection.data;
     }
 
+    private static boolean isSimultaneousCombatGraveyardOrder(CardCollectionView cards,
+            ZoneType destination, SpellAbility source) {
+        return destination == ZoneType.Graveyard && source == null && cards.size() >= 2;
+    }
+
     private void requireContext() {
         if (player.getGame().getCombat() != combat) {
             throw new IllegalArgumentException("Combat changed during graveyard ordering");
         }
         CombatDamageDecision.requireScope(player);
         for (Card card : cards) {
-            if (card.getOwner() != player || card.getController() != player
-                    || player.getGame().getCardState(card, null) != card || !card.isInZone(ZoneType.Battlefield)
-                    || !card.isCreature() || card.getDamage() < card.getNetToughness()) {
+            if (!isBoundSimultaneousCombatDeath(card)) {
                 throw new IllegalArgumentException("Unbound or stale simultaneous combat death");
             }
         }
+    }
+
+    private boolean isBoundSimultaneousCombatDeath(Card card) {
+        return card.getOwner() == player && card.getController() == player
+                && player.getGame().getCardState(card, null) == card && card.isInZone(ZoneType.Battlefield)
+                && card.isCreature() && card.getDamage() >= card.getNetToughness();
     }
 
     public CardCollection apply(List<Integer> answer) {
