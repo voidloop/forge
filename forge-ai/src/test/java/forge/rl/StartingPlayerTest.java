@@ -6,12 +6,14 @@ import forge.ai.PlayerControllerAi;
 import forge.deck.Deck;
 import forge.game.Game;
 import forge.game.GameRules;
+import forge.game.GameStage;
 import forge.game.GameType;
 import forge.game.Match;
 import forge.game.event.GameEventGameStarted;
 import forge.game.player.Player;
 import forge.game.player.PlayerController;
 import forge.game.player.RegisteredPlayer;
+import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
 import forge.rl.decisions.DecisionExecutor;
 import forge.rl.decisions.DecisionRecorder;
@@ -37,8 +39,13 @@ public class StartingPlayerTest {
     private static final class BeforeHands extends RuntimeException { }
 
     private static Game fixture(BiFunction<Player, LobbyPlayerAi, PlayerController> controller) {
+        return fixture(controller, new GameRules(GameType.Constructed), 2);
+    }
+
+    private static Game fixture(BiFunction<Player, LobbyPlayerAi, PlayerController> controller, GameRules rules, int count) {
         List<RegisteredPlayer> seats = new ArrayList<>();
-        for (String name : List.of("first", "second")) {
+        for (int i = 0; i < count; i++) {
+            String name = "player " + i;
             var lobby = new LobbyPlayerAi(name, null) {
                 @Override public Player createIngamePlayer(Game game, int id) {
                     Player player = new Player(getName(), game, id) {
@@ -53,7 +60,7 @@ public class StartingPlayerTest {
             seat.setId(17 + 14 * seats.size());
             seats.add(seat);
         }
-        Game game = new Match(new GameRules(GameType.Constructed), seats, "play or draw").createGame();
+        Game game = new Match(rules, seats, "play or draw").createGame();
         game.getRegisteredPlayers().forEach(p -> p.setLife(20, null));
         return game;
     }
@@ -133,6 +140,116 @@ public class StartingPlayerTest {
             answer = List.copyOf(result);
             pending = null;
             afterCalls++;
+        }
+    }
+
+    private static Game contractFixture(BiFunction<Player, LobbyPlayerAi, PlayerController> controller, String context) {
+        var rules = new GameRules(context.equals("limited") ? GameType.Draft : GameType.Constructed);
+        if (context.equals("variant")) { rules.addAppliedVariant(GameType.Commander); }
+        Game game = fixture(controller, rules, 2);
+        if (context.equals("variant")) {
+            for (Player player : game.getPlayers()) {
+                OriginalCompositeChoice.add(game, player, "Grizzly Bears");
+                var commander = OriginalCompositeChoice.add(game, player, "Isamaru, Hound of Konda");
+                commander.setCommander(true);
+                game.getAction().moveTo(ZoneType.Command, commander, null, null);
+            }
+        }
+        if (context.equals("play") || context.equals("restart")) {
+            game.setAge(context.equals("play") ? GameStage.Play : GameStage.RestartedByKarn);
+            game.getPhaseHandler().devModeSet(PhaseType.MAIN2, game.getPlayers().get(0), false, 6);
+        }
+        return game;
+    }
+
+    private static Map<String, Object> snapshot(Game game, int actor) {
+        var reader = new StateReader(game.getPlayers().get(actor), 0L);
+        try { return reader.snapshot(); }
+        finally { reader.close(); }
+    }
+
+    @Test public void startingChoiceDependsOnPlayersAndFirstGameRatherThanFixtureContext() {
+        for (String context : List.of("limited", "variant", "play", "restart")) {
+            for (int actor : List.of(0, 1)) {
+                for (boolean firstGame : List.of(false, true)) {
+                    Game baseline = contractFixture((p, lobby) -> new PlayerControllerAi(p.getGame(), p, lobby), context);
+                    Map<String, Object> before = snapshot(baseline, actor);
+                    MyRandom.setRandom(new Random(42));
+                    assertSame(baseline.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), baseline.getPlayers().get(actor));
+                    long randomAfter = MyRandom.getRandom().nextLong();
+                    assertEquals(snapshot(baseline, actor), before);
+                    Recording recording = new Recording();
+                    Game teacher = contractFixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording), context);
+                    MyRandom.setRandom(new Random(42));
+                    assertSame(teacher.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), teacher.getPlayers().get(actor));
+                    assertEquals(MyRandom.getRandom().nextLong(), randomAfter);
+                    assertEquals(snapshot(teacher, actor), before);
+                    assertEquals(recording.request.get("state"), before);
+                    assertEquals(((Map<?, ?>) recording.request.get("options")).get("isFirstGame"), firstGame);
+                    assertEquals(recording.beforeCalls, 1);
+                    assertEquals(recording.afterCalls, 1);
+                    assertEquals(recording.answer, List.of(actor));
+                    Game replay = contractFixture((p, lobby) -> new PlayerControllerRl(p.getGame(), p, lobby, request -> {
+                        assertEquals(request, recording.request);
+                        return recording.answer;
+                    }), context);
+                    MyRandom.setRandom(new Random(42));
+                    assertSame(replay.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), replay.getPlayers().get(actor));
+                    assertEquals(MyRandom.getRandom().nextLong(), randomAfter);
+                    assertEquals(snapshot(replay, actor), before);
+                    close(teacher);
+                    close(replay);
+                }
+            }
+        }
+    }
+
+    @Test public void nonDuelObservationAndNestedStartingChoicesStopBeforeAnotherQuestion() {
+        for (int count : List.of(1, 3)) {
+            for (boolean teacher : List.of(false, true)) {
+                Game game = fixture((p, lobby) -> teacher
+                        ? new PlayerControllerTeacher(p.getGame(), p, lobby, new Recording() {
+                            @Override public void before(Map<String, Object> data) { fail("Non-duel reached recorder"); }
+                        })
+                        : new PlayerControllerRl(p.getGame(), p, lobby, request -> { throw new AssertionError("Non-duel reached client"); }),
+                        new GameRules(GameType.Constructed), count);
+                var controller = game.getPlayers().get(0).getController();
+                assertThrows(UnsupportedOperationException.class, () -> controller.chooseStartingPlayer(true));
+                assertThrows(UnsupportedOperationException.class, controller::awaitNextInput);
+                close(game);
+            }
+        }
+        Game[] nested = {null};
+        Recording recording = new Recording() {
+            @Override public void before(Map<String, Object> data) {
+                super.before(data);
+                assertThrows(IllegalStateException.class, () -> nested[0].getPlayers().get(0).getController().chooseStartingPlayer(false));
+            }
+        };
+        nested[0] = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
+        var controller = nested[0].getPlayers().get(0).getController();
+        assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
+        assertThrows(IllegalStateException.class, () -> controller.chooseStartingPlayer(true));
+        assertEquals(recording.beforeCalls, 1);
+        assertEquals(recording.afterCalls, 0);
+        assertNotNull(recording.pending);
+        close(nested[0]);
+
+        for (boolean teacher : List.of(false, true)) {
+            Recording pending = new Recording();
+            int[] clientCalls = {0};
+            Game priority = contractFixture((p, lobby) -> teacher
+                    ? new PlayerControllerTeacher(p.getGame(), p, lobby, pending)
+                    : new PlayerControllerRl(p.getGame(), p, lobby, request -> { clientCalls[0]++; return List.of(1); }), "play");
+            OriginalCompositeChoice.add(priority, priority.getPlayers().get(0), "Forest");
+            priority.getPhaseHandler().setPriority(priority.getPlayers().get(0));
+            var priorityController = priority.getPlayers().get(0).getController();
+            assertNotNull(priorityController.chooseSpellAbilityToPlay());
+            assertThrows(IllegalStateException.class, () -> priorityController.chooseStartingPlayer(true));
+            assertThrows(IllegalStateException.class, priorityController::awaitNextInput);
+            assertEquals(teacher ? pending.beforeCalls : clientCalls[0], 1,
+                    "Pending execution must not open a starting-player question");
+            close(priority);
         }
     }
 
@@ -233,6 +350,8 @@ public class StartingPlayerTest {
         }
         OriginalCompositeChoice.initialize(root);
         var test = new StartingPlayerTest();
+        test.startingChoiceDependsOnPlayersAndFirstGameRatherThanFixtureContext();
+        test.nonDuelObservationAndNestedStartingChoicesStopBeforeAnotherQuestion();
         test.adapterInterfacesKeepBindingsLocalToEachGame();
         test.nativeStartupWaitsWithoutOpponentQuestionAndAppliesPlayOrDraw();
         test.teacherKeepsOriginalFinalPlayerStateAndRngAndReplaysOnNewPlayers();

@@ -13,6 +13,7 @@ import forge.rl.decisions.MulliganRequests;
 import forge.rl.decisions.StartingPlayerRequest;
 import forge.rl.decisions.TriggerRequest;
 import forge.rl.decisions.StartingPlayerRecorder;
+import forge.rl.decisions.DecisionRecorder;
 import forge.rl.decisions.MulliganKeepRecorder;
 import forge.rl.decisions.SelectionRecorder;
 import forge.rl.decisions.AttackersRecorder;
@@ -46,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /** Records supported final decisions, including subordinate mana colors, through the public API. */
@@ -91,21 +93,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
-        if (failure != null) { throw failure; }
-        try {
-            if (activeKind != null || pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
-                throw new IllegalStateException("Previous teacher decision is still active");
-            }
-            startObservation();
-            var request = new StartingPlayerRequest(player, observation, isFirstGame);
-            activeKind = "starting_player";
-            callback.before(request.data);
-            Player chosen = super.chooseStartingPlayer(isFirstGame);
-            if (failure != null) { throw failure; }
-            callback.after(new StartingPlayerRecorder(request, chosen).encode());
-            return chosen;
-        } catch (RuntimeException error) { failure = error; throw error; }
-        finally { activeKind = null; }
+        return record(null, "starting_player", () -> new StartingPlayerRequest(player, observation, isFirstGame),
+                request -> request.data, () -> super.chooseStartingPlayer(isFirstGame), StartingPlayerRecorder::new);
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
@@ -143,11 +132,20 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     private <T extends GameEntity, R> R record(SpellAbility ability, String kind, Supplier<SelectionRequest<T>> question,
             Supplier<R> original, Function<R, Iterable<T>> selected) {
+        return record(ability, kind, question, request -> request.data, original,
+                (request, result) -> new SelectionRecorder<>(request, selected.apply(result)));
+    }
+
+    private <Q, R> R record(SpellAbility ability, String kind, Supplier<Q> question,
+            Function<Q, Map<String, Object>> data, Supplier<R> original, BiFunction<Q, R, DecisionRecorder> recorder) {
         if (failure != null) { throw failure; }
+        if (isStartingPlayerBlocked(kind)) {
+            failure = new IllegalStateException("Previous teacher decision is still active");
+            throw failure;
+        }
         // Native multiple selections call the public single selector internally.
         if (activeKind != null) {
-            if (activeAbility != ability || !kind.equals("single_entity")
-                    || !(activeKind.equals("cards") || activeKind.equals("entities"))) {
+            if (!isNestedSingleSelection(ability, kind)) {
                 failure = new UnsupportedOperationException("Unexpected nested teacher selection");
                 throw failure;
             }
@@ -158,14 +156,24 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         activeKind = kind;
         try {
             startObservation();
-            SelectionRequest<T> request = question.get();
-            callback.before(request.data);
+            Q request = question.get();
+            callback.before(data.apply(request));
             R result = original.get();
             if (failure != null) { throw failure; }
-            callback.after(new SelectionRecorder<>(request, selected.apply(result)).encode());
+            callback.after(recorder.apply(request, result).encode());
             return result;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeAbility = null; activeKind = null; }
+    }
+
+    private boolean isStartingPlayerBlocked(String kind) {
+        return kind.equals("starting_player") && (activeKind != null || pendingPriority != null
+                || pendingMana != null || activeMana != null || activePriority != null);
+    }
+
+    private boolean isNestedSingleSelection(SpellAbility ability, String kind) {
+        return activeAbility == ability && kind.equals("single_entity")
+                && (activeKind.equals("cards") || activeKind.equals("entities"));
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {

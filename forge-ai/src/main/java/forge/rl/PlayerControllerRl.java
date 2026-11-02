@@ -363,6 +363,9 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
         checkActive();
         try {
+            if (hasUnfinishedDecision()) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
             var request = new StartingPlayerRequest(player, observation, isFirstGame);
             return new StartingPlayerExecutor(request, response(request.data)).apply();
@@ -403,7 +406,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         checkActive();
         try {
-            if (pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null) {
+            if (hasUnfinishedDecision()) {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
@@ -416,6 +419,10 @@ public final class PlayerControllerRl extends PlayerController {
             pendingPriority = new PriorityExecutor(request, response(request.data)).apply();
             return pendingPriority == null ? null : List.of(pendingPriority.ability);
         } catch (RuntimeException error) { throw stop(error); }
+    }
+
+    private boolean hasUnfinishedDecision() {
+        return pendingPriority != null || pendingMana != null || activeMana != null || activePriority != null;
     }
 
     @Override public boolean playChosenSpellAbility(SpellAbility sa) {

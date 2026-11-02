@@ -16,6 +16,9 @@ import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.util.collect.FCollection;
+import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.SelectionRecorder;
+import forge.rl.decisions.SelectionExecutor;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 import org.testng.annotations.BeforeClass;
@@ -165,6 +168,32 @@ public class NativeDecisionOptionsTest {
         }
     }
 
+    @Test public void selectionBindingsSurviveSourceListMutationAndDistinguishIdenticalCards() {
+        Fixture fixture = fixture(new forge.ai.LobbyPlayerAi("first", null));
+        Card other = add(fixture.game(), fixture.actor(), "Grizzly Bears", ZoneType.Battlefield);
+        var options = new CardCollection(List.of(fixture.first(), other));
+        var view = new StateReader(fixture.actor(), 0L);
+        try {
+            var request = new SelectionRequest<>(fixture.actor(), view, "cards", options, "two bears", 2, 2,
+                    false, null, null, null);
+            var items = (List<?>) ((Map<?, ?>) request.data.get("options")).get("items");
+            assertEquals(((Map<?, ?>) items.get(0)).get("name"), ((Map<?, ?>) items.get(1)).get("name"));
+            assertNotEquals(((Map<?, ?>) items.get(0)).get("key"), ((Map<?, ?>) items.get(1)).get("key"));
+            String saved = request.data.toString();
+            options.clear();
+            fixture.first().setTapped(true);
+            List<Integer> answer = new SelectionRecorder<>(request, List.of(other, fixture.first())).encode();
+            assertEquals(answer, List.of(1, 0));
+            var applied = new SelectionExecutor<>(request, answer).apply();
+            assertSame(applied.get(0), other);
+            assertSame(applied.get(1), fixture.first());
+            assertEquals(request.data.toString(), saved, "Native mutations changed a detached question");
+            Fixture foreign = fixture(new forge.ai.LobbyPlayerAi("first", null));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new SelectionRecorder<>(request, List.of(foreign.first(), other)).encode());
+        } finally { view.close(); }
+    }
+
     public static void main(String[] args) throws Exception {
         Path root = Path.of(args[0]).toRealPath();
         for (Class<?> type : List.of(AbilityFactory.class, AbilityUtils.class, Game.class)) {
@@ -176,6 +205,7 @@ public class NativeDecisionOptionsTest {
         test.effectsSupplyFilteredAndCurrentOptions();
         test.validatesSelectionsAndOptionalDeclines();
         test.rejectsUnimplementedVisibilityBeforeCallingClient();
+        test.selectionBindingsSurviveSourceListMutationAndDistinguishIdenticalCards();
         System.out.println("PASS: independent RL selections use original effect options; execution, constraints, refusal and visibility guards verified");
     }
 }
