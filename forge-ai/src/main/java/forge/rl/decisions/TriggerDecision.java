@@ -93,7 +93,7 @@ public final class TriggerDecision {
 
     public TriggerDecision(Player player, StateReader view, List<SpellAbility> abilities) {
         this.player = player;
-        // shortcut: one or two distinct ETB sources; qualify repeated sources, larger batches and APNAP separately.
+        // shortcut: one or two distinct ETB sources per controller; qualify repeated sources and larger batches separately.
         if (!isSupportedBatch(abilities)) {
             throw new UnsupportedOperationException("Mandatory automatic ETB preparation for one or two sources");
         }
