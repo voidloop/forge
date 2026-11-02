@@ -350,6 +350,9 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
         checkActive();
         try {
+            if (hasUnfinishedDecision()) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
             var request = CleanupRequests.create(player, observation, numDiscard);
             return new CardCollection(new SelectionExecutor<>(request, response(request.data)).apply());

@@ -239,7 +239,11 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     private boolean isExclusiveDecisionBlocked(String name) {
-        return !isSelectionDecision(name) && hasUnfinishedAction();
+        return requiresExclusiveDecision(name) && hasUnfinishedAction();
+    }
+
+    private boolean requiresExclusiveDecision(String name) {
+        return !isSelectionDecision(name) || name.equals("discard_cleanup");
     }
 
     private boolean hasUnboundManaColor() {
