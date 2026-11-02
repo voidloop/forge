@@ -84,17 +84,18 @@ public final class SelectionRequest<T extends GameEntity> implements DecisionReq
     }
 
     private static boolean hasForeignRelatedPlayer(Player observer, Player related) {
-        return related != null && (related.getGame() != observer.getGame()
-                || !observer.getGame().getPlayers().contains(related));
+        return related != null && !isBoundPlayer(related, observer);
     }
 
     private static boolean isHiddenOrUnboundCard(Card card, Player observer) {
         return card.getGame() != observer.getGame() || card.getZone() == null || card.isFaceDown()
+                || card.getZone().getCards().stream().noneMatch(current -> current == card)
                 || !card.getView().canBeShownTo(observer.getView());
     }
 
     private static boolean isBoundPlayer(Player candidate, Player observer) {
-        return candidate.getGame() == observer.getGame() && observer.getGame().getPlayers().contains(candidate);
+        return candidate.getGame() == observer.getGame()
+                && observer.getGame().getPlayers().stream().anyMatch(current -> current == candidate);
     }
 
     private boolean hasInvalidSelection(List<Integer> selected) {

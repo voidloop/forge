@@ -116,6 +116,9 @@ public final class PlayerControllerRl extends PlayerController {
             int min, int max, boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         checkActive();
         try {
+            if (hasUnfinishedDecision()) {
+                throw new IllegalStateException("Previous choice has not been executed");
+            }
             startObservation();
             SelectionRequest<T> request = new SelectionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
             return new SelectionExecutor<>(request, response(request.data)).apply();

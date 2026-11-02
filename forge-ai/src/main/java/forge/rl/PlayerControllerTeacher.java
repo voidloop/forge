@@ -226,7 +226,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 if (hasNestedManaPayment()) { throw new UnsupportedOperationException("Nested teacher mana payment"); }
             }
             default -> {
-                if (isExclusiveDecisionBlocked(name)) {
+                if (hasUnfinishedAction()) {
                     throw new IllegalStateException("Previous teacher decision is still active");
                 }
             }
@@ -236,14 +236,6 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private boolean hasUnfinishedAction() {
         return activeKind != null || pendingPriority != null || pendingMana != null
                 || activeMana != null || activePriority != null;
-    }
-
-    private boolean isExclusiveDecisionBlocked(String name) {
-        return requiresExclusiveDecision(name) && hasUnfinishedAction();
-    }
-
-    private boolean requiresExclusiveDecision(String name) {
-        return !isSelectionDecision(name) || name.equals("discard_cleanup");
     }
 
     private boolean hasUnboundManaColor() {
