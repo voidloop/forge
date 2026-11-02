@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.BlockersRecorder;
 
 import com.google.common.eventbus.Subscribe;
 import forge.LobbyPlayer;
@@ -238,7 +238,7 @@ public class BlockersTest {
                     f.game().getCombat().removeFromCombat(offered);
                     f.game().getCombat().addAttacker(lki, f.defender());
                 } else { f.game().getCombat().addBlocker(f.attackers().get(0), lki); }
-                assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.encode(request));
+                assertThrows(IllegalArgumentException.class, () -> new BlockersRecorder(request).encode());
             } finally { view.close(); }
         }
     }

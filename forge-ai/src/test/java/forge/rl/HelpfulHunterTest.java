@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.TriggerRecorder;
 
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -237,7 +237,7 @@ public class HelpfulHunterTest {
         var request = new TriggerDecision(f.player(), view, List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
-        assertThrows(IllegalStateException.class, () -> DecisionRecorder.encode(request));
+        assertThrows(IllegalStateException.class, () -> new TriggerRecorder(request).encode());
         Card source = wrapper.getHostCard();
         var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
             f.player().getZone(ZoneType.Battlefield).remove(source);

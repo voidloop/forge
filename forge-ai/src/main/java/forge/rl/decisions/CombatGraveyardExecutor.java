@@ -1,0 +1,11 @@
+package forge.rl.decisions;
+
+import forge.game.card.CardCollection;
+import java.util.List;
+
+public record CombatGraveyardExecutor(CombatGraveyardDecision request, List<Integer> answer) implements DecisionExecutor<CardCollection> {
+    @Override public CardCollection apply() {
+        request.requireContext();
+        return new CardCollection(new SelectionExecutor<>(request.selection, answer).apply());
+    }
+}

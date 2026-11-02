@@ -197,6 +197,12 @@ public final class PriorityDecision {
         return choice;
     }
 
+    public Choice bindChoice(List<Integer> answer) {
+        Choice choice = validate(answer);
+        if (choice != null) { choice.bindTarget(answer); }
+        return choice;
+    }
+
     private static List<SpellAbility> stack(Player player) {
         List<SpellAbility> result = new ArrayList<>();
         player.getGame().getStack().forEach(entry -> result.add(entry.getSpellAbility()));

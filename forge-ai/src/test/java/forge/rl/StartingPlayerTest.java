@@ -13,6 +13,11 @@ import forge.game.player.Player;
 import forge.game.player.PlayerController;
 import forge.game.player.RegisteredPlayer;
 import forge.game.zone.ZoneType;
+import forge.rl.decisions.DecisionExecutor;
+import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.StartingPlayerDecision;
+import forge.rl.decisions.StartingPlayerExecutor;
+import forge.rl.decisions.StartingPlayerRecorder;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -131,6 +136,29 @@ public class StartingPlayerTest {
         }
     }
 
+    @Test public void adapterInterfacesKeepBindingsLocalToEachGame() {
+        Game teacher = fixture((p, lobby) -> new PlayerControllerAi(p.getGame(), p, lobby));
+        Game replay = fixture((p, lobby) -> new PlayerControllerAi(p.getGame(), p, lobby));
+        var teacherView = new StateReader(teacher.getRegisteredPlayers().get(0), 0L);
+        var replayView = new StateReader(replay.getRegisteredPlayers().get(0), 0L);
+        try {
+            var recorded = new StartingPlayerDecision(teacher.getRegisteredPlayers().get(0), teacherView, true);
+            var current = new StartingPlayerDecision(replay.getRegisteredPlayers().get(0), replayView, true);
+            Player original = teacher.getPlayers().get(1);
+            Player replacement = replay.getPlayers().get(1);
+            DecisionRecorder recorder = new StartingPlayerRecorder(recorded, original);
+            List<Integer> answer = recorder.encode();
+            assertEquals(answer, List.of(1));
+            assertThrows(UnsupportedOperationException.class, () -> answer.add(0));
+            DecisionExecutor<Player> executor = new StartingPlayerExecutor(current, answer);
+            assertNotSame(original, replacement);
+            assertSame(executor.apply(), replacement);
+            assertThrows(IllegalArgumentException.class, () -> new StartingPlayerRecorder(recorded, replacement).encode());
+            assertThrows(IllegalArgumentException.class, () -> new StartingPlayerExecutor(current, List.of(0, 1)).apply());
+            assertEquals(recorder.encode(), answer, "Replay changed the original recorder's bindings");
+        } finally { teacherView.close(); replayView.close(); }
+    }
+
     @Test public void teacherKeepsOriginalFinalPlayerStateAndRngAndReplaysOnNewPlayers() {
         for (long seed : List.of(0L, 42L, 100L)) {
             Game baseline = fixture((p, lobby) -> new PlayerControllerAi(p.getGame(), p, lobby));
@@ -205,6 +233,7 @@ public class StartingPlayerTest {
         }
         OriginalCompositeChoice.initialize(root);
         var test = new StartingPlayerTest();
+        test.adapterInterfacesKeepBindingsLocalToEachGame();
         test.nativeStartupWaitsWithoutOpponentQuestionAndAppliesPlayOrDraw();
         test.teacherKeepsOriginalFinalPlayerStateAndRngAndReplaysOnNewPlayers();
         test.invalidResponsesAndRecorderFailuresStopWithoutInventingAnAnswer();

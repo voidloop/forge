@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.AttackersRecorder;
 
 import com.google.common.eventbus.Subscribe;
 import forge.LobbyPlayer;
@@ -181,7 +181,7 @@ public class AttackersTest {
             assertNotSame(lki, offered);
             assertEquals(lki, offered);
             f.game().getCombat().addAttacker(lki, f.game().getPlayers().get(1));
-            assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.encode(request));
+            assertThrows(IllegalArgumentException.class, () -> new AttackersRecorder(request).encode());
         } finally { view.close(); }
     }
 
