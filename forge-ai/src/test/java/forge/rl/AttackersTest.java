@@ -1,5 +1,7 @@
 package forge.rl;
 
+import forge.rl.decisions.DecisionRecorder;
+
 import com.google.common.eventbus.Subscribe;
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -179,7 +181,7 @@ public class AttackersTest {
             assertNotSame(lki, offered);
             assertEquals(lki, offered);
             f.game().getCombat().addAttacker(lki, f.game().getPlayers().get(1));
-            assertThrows(IllegalArgumentException.class, request::encode);
+            assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.encode(request));
         } finally { view.close(); }
     }
 

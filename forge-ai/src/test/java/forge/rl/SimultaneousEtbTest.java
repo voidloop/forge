@@ -1,5 +1,8 @@
 package forge.rl;
 
+import forge.rl.decisions.DecisionRecorder;
+import forge.rl.decisions.DecisionExecutor;
+
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -203,16 +206,16 @@ public class SimultaneousEtbTest {
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerDecision(f.player(), view, wrappers);
-            assertThrows(IllegalStateException.class, request::encode);
+            assertThrows(IllegalStateException.class, () -> DecisionRecorder.encode(request));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
-            request.apply(answer);
-            assertEquals(request.encode(), answer);
+            DecisionExecutor.apply(request, answer);
+            assertEquals(DecisionRecorder.encode(request), answer);
             var stack = new ArrayList<SpellAbility>();
             f.game().getStack().forEach(entry -> stack.add(entry.getSpellAbility()));
             assertSame(stack.get(0), wrappers.get(answer.get(1)));
             assertSame(stack.get(1), wrappers.get(answer.get(0)));
             assertSame(stack.get(2), tail);
-            assertThrows(IllegalArgumentException.class, () -> request.apply(answer));
+            assertThrows(IllegalArgumentException.class, () -> DecisionExecutor.apply(request, answer));
             view.close();
         }
     }
@@ -265,8 +268,8 @@ public class SimultaneousEtbTest {
             inner.getMapParams().put("Defined", "You");
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerDecision(f.player(), view, List.of(wrapper));
-            request.apply(List.of(0));
-            assertEquals(request.encode(), List.of(0));
+            DecisionExecutor.apply(request, List.of(0));
+            assertEquals(DecisionRecorder.encode(request), List.of(0));
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
                 throw new AssertionError("Automatic effect requested another decision");
             });

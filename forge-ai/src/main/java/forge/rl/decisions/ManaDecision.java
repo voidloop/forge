@@ -20,7 +20,7 @@ import java.util.Map;
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
 public final class ManaDecision {
     public final Map<String, Object> data;
-    private final Choice choice;
+    final Choice choice;
 
     public static boolean supported(SpellAbility ability) {
         return ability.getApi() == ApiType.Mana && ability.isActivatedAbility() && ability.isManaAbility()
@@ -88,25 +88,9 @@ public final class ManaDecision {
                 "scope", "pass_or_single_tap_mana", "items", List.copyOf(items)));
     }
 
-    public Choice apply(List<Integer> answer, Player player) {
-        int index = index(answer, choice == null ? 1 : 2);
-        if (index == 0) { return null; }
-        choice.ability.setActivatingPlayer(player);
-        return choice;
-    }
-
-    public List<Integer> encode(List<SpellAbility> selected) {
-        if (selected == null) { return List.of(0); }
-        if (choice == null || selected.size() != 1 || selected.get(0) != choice.ability
-                || selected.get(0).getHostCard() != choice.card) {
-            throw new IllegalArgumentException("Native mana decision outside request bindings");
-        }
-        return List.of(1);
-    }
-
     public Choice selected() { return choice; }
 
-    private static int index(List<Integer> answer, int count) {
+    static int index(List<Integer> answer, int count) {
         if (answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
                 || answer.get(0) < 0 || answer.get(0) >= count) {
             throw new IllegalArgumentException("Invalid mana decision answer");
@@ -119,7 +103,7 @@ public final class ManaDecision {
         final Card card;
         private int[] before;
         private int beforeTotal;
-        private byte color;
+        byte color;
         private Player priority;
         private forge.game.phase.PhaseType phase;
         private int turn;
@@ -141,7 +125,7 @@ public final class ManaDecision {
             turn = player.getGame().getPhaseHandler().getTurn();
         }
 
-        private ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
+        ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
         public Map<String, Object> colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
             if (before == null || color != 0 || source != ability || ability.getHostCard() != card || !card.isTapped()
@@ -152,20 +136,6 @@ public final class ManaDecision {
             if (offered.getColor() != colors().getColor()) { throw new UnsupportedOperationException("AI-restricted mana menu must not be exported"); }
             return Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_color", "source", view.reference(card),
                     "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList()));
-        }
-
-        public byte applyColor(List<Integer> answer) {
-            var options = colors().stream().toList();
-            color = options.get(index(answer, options.size())).getColorMask();
-            return color;
-        }
-
-        public List<Integer> encodeColor(byte chosen) {
-            var options = colors().stream().toList();
-            for (int i = 0; i < options.size(); i++) {
-                if (options.get(i).getColorMask() == chosen) { color = chosen; return List.of(i); }
-            }
-            throw new IllegalArgumentException("Native mana color outside request options");
         }
 
         private void samePriority(Player player) {

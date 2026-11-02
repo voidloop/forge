@@ -7,13 +7,12 @@ import forge.game.GameType;
 import forge.game.player.Player;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 
 /** Play/draw in an ordinary duel, before opening hands or phases exist. */
 public final class StartingPlayerDecision {
     public final Map<String, Object> data;
-    private final DecisionRequest<Player> selection;
+    final DecisionRequest<Player> selection;
 
     public StartingPlayerDecision(Player player, StateReader view, boolean isFirstGame) {
         var game = player.getGame();
@@ -31,6 +30,4 @@ public final class StartingPlayerDecision {
                 "isFirstGame", isFirstGame, "items", ((Map<?, ?>) selection.data.get("options")).get("items")));
     }
 
-    public Player apply(List<Integer> answer) { return selection.apply(answer).get(0); }
-    public List<Integer> encode(Player chosen) { return selection.encode(List.of(chosen)); }
 }

@@ -3,7 +3,6 @@ package forge.rl.decisions;
 import forge.rl.StateReader;
 import forge.game.card.Card;
 import forge.game.combat.Combat;
-import forge.game.card.CardCollection;
 import forge.game.card.CardCollectionView;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
@@ -18,7 +17,7 @@ public final class CombatGraveyardDecision {
     private final Player player;
     private final Combat combat;
     private final List<Card> cards;
-    private final DecisionRequest<Card> selection;
+    final DecisionRequest<Card> selection;
 
     public CombatGraveyardDecision(Player player, StateReader view, CardCollectionView cards,
             ZoneType destination, SpellAbility source) {
@@ -39,7 +38,7 @@ public final class CombatGraveyardDecision {
         return destination == ZoneType.Graveyard && source == null && cards.size() >= 2;
     }
 
-    private void requireContext() {
+    void requireContext() {
         if (player.getGame().getCombat() != combat) {
             throw new IllegalArgumentException("Combat changed during graveyard ordering");
         }
@@ -57,13 +56,4 @@ public final class CombatGraveyardDecision {
                 && card.isCreature() && card.getDamage() >= card.getNetToughness();
     }
 
-    public CardCollection apply(List<Integer> answer) {
-        requireContext();
-        return new CardCollection(selection.apply(answer));
-    }
-
-    public List<Integer> encode(CardCollectionView chosen) {
-        requireContext();
-        return selection.encode(chosen);
-    }
 }

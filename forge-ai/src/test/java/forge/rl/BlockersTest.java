@@ -1,5 +1,7 @@
 package forge.rl;
 
+import forge.rl.decisions.DecisionRecorder;
+
 import com.google.common.eventbus.Subscribe;
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -236,7 +238,7 @@ public class BlockersTest {
                     f.game().getCombat().removeFromCombat(offered);
                     f.game().getCombat().addAttacker(lki, f.defender());
                 } else { f.game().getCombat().addBlocker(f.attackers().get(0), lki); }
-                assertThrows(IllegalArgumentException.class, request::encode);
+                assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.encode(request));
             } finally { view.close(); }
         }
     }

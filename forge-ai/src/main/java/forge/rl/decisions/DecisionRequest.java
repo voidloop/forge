@@ -16,7 +16,7 @@ import java.util.Objects;
 /** One native selection: detached question and private, invocation-local bindings. */
 public final class DecisionRequest<T extends GameEntity> {
     public final Map<String, Object> data;
-    private final List<T> bindings;
+    final List<T> bindings;
     private final int lower;
     private final int upper;
     private final boolean optional;
@@ -69,7 +69,7 @@ public final class DecisionRequest<T extends GameEntity> {
         data = Map.of("state", facts, "options", decision);
     }
 
-    public List<T> apply(List<Integer> selected) {
+    void validate(List<Integer> selected) {
         Objects.requireNonNull(selected, "Missing selection response");
         for (Object value : selected) {
             if (!(value instanceof Integer)) { throw new IllegalArgumentException("Selection must contain integers"); }
@@ -79,21 +79,5 @@ public final class DecisionRequest<T extends GameEntity> {
                 || selected.stream().anyMatch(index -> index < 0 || index >= bindings.size())) {
             throw new IllegalArgumentException("Invalid selection response");
         }
-        return selected.stream().map(bindings::get).toList();
-    }
-
-    public List<Integer> encode(Iterable<T> selected) {
-        Objects.requireNonNull(selected, "Missing native selection");
-        List<Integer> indices = new ArrayList<>();
-        for (T entity : selected) {
-            int index = -1;
-            for (int i = 0; i < bindings.size(); i++) {
-                if (bindings.get(i) == entity) { index = i; break; }
-            }
-            if (index < 0) { throw new IllegalArgumentException("Native selection outside request bindings"); }
-            indices.add(index);
-        }
-        apply(indices);
-        return List.copyOf(indices);
     }
 }

@@ -21,8 +21,8 @@ import java.util.Map;
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
 public final class PriorityDecision {
     public final Map<String, Object> data;
-    private final Player player;
-    private final List<Choice> bindings = new ArrayList<>();
+    final Player player;
+    final List<Choice> bindings = new ArrayList<>();
 
     static void requireCreature(Card card) {
         if (!isVanillaCombatCreature(card)) {
@@ -180,7 +180,7 @@ public final class PriorityDecision {
                 "scope", "ordinary_lands_creatures_mana", "items", List.copyOf(items)));
     }
 
-    public Choice apply(List<Integer> answer) {
+    Choice validate(List<Integer> answer) {
         if (answer == null || answer.isEmpty() || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))
                 || answer.get(0) < 0 || answer.get(0) > bindings.size()) {
             throw new IllegalArgumentException("Invalid priority answer");
@@ -194,28 +194,7 @@ public final class PriorityDecision {
                 || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size())) {
             throw new IllegalArgumentException("Invalid priority target answer");
         }
-        if (choice.targets != null) { choice.targetIndex = answer.get(1); }
-        choice.ability.setActivatingPlayer(player);
         return choice;
-    }
-
-    public List<Integer> encode(List<SpellAbility> selected) {
-        if (selected == null) { return List.of(0); }
-        if (selected.size() == 1) {
-            for (int i = 0; i < bindings.size(); i++) {
-                Choice choice = bindings.get(i);
-                if (selected.get(0) == choice.ability && selected.get(0).getHostCard() == choice.card) {
-                    if (choice.targets == null) { return List.of(i + 1); }
-                    if (choice.ability.getTargets().size() == 1) {
-                        for (int j = 0; j < choice.targets.size(); j++) {
-                            if (choice.ability.getTargets().get(0) == choice.targets.get(j)) { return List.of(i + 1, j); }
-                        }
-                    }
-                    throw new IllegalArgumentException("Native final target outside previous bindings");
-                }
-            }
-        }
-        throw new IllegalArgumentException("Native priority response outside exact bindings");
     }
 
     private static List<SpellAbility> stack(Player player) {
@@ -226,11 +205,11 @@ public final class PriorityDecision {
 
     public static final class Choice {
         public final SpellAbility ability;
-        private final Card card;
+        final Card card;
         private final String type;
         private final int variant;
-        private final List<GameEntity> targets;
-        private int targetIndex = -1;
+        final List<GameEntity> targets;
+        int targetIndex = -1;
         private int landsPlayed;
         private int manaBefore;
         private List<SpellAbility> stackBefore;
@@ -239,21 +218,12 @@ public final class PriorityDecision {
             this.ability = ability; this.card = card; this.type = type; this.variant = variant;
             this.targets = targets;
         }
+        void bindTarget(List<Integer> answer) {
+            if (targets != null) { targetIndex = answer.get(1); }
+        }
+
         public boolean isCast() { return type.equals("cast_spell"); }
         public boolean isMana() { return type.equals("activate_mana"); }
-
-        public boolean applyTarget(Player player, SpellAbility selected) {
-            if (selected != ability || targets == null || !ability.getTargets().isEmpty()) {
-                throw new IllegalArgumentException("Unbound ordinary target request");
-            }
-            if (targetIndex == -1) { return false; }
-            GameEntity target = targets.get(targetIndex);
-            if (target instanceof Card c && player.getGame().getCardState(c, null) != c || !ability.canTarget(target)) {
-                throw new IllegalArgumentException("Selected target is no longer legal");
-            }
-            ability.getTargets().add(target);
-            return true;
-        }
 
         public void before(Player player, SpellAbility selected) {
             requireContext(player);

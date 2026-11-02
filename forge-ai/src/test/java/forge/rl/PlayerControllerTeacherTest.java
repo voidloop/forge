@@ -1,5 +1,7 @@
 package forge.rl;
 
+import forge.rl.decisions.DecisionRecorder;
+
 import forge.rl.decisions.PriorityDecision;
 
 import forge.ai.LobbyPlayerAi;
@@ -211,8 +213,8 @@ public class PlayerControllerTeacherTest {
         var activator = ability.getActivatingPlayer();
         PriorityDecision question = new PriorityDecision(fixture.player(), new StateReader(fixture.player(), 0L));
         assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
-        assertThrows(IllegalArgumentException.class, () -> question.encode(List.of()));
-        assertThrows(IllegalArgumentException.class, () -> question.encode(List.of(choice.get(0))));
+        assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.capture(question, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> DecisionRecorder.capture(question, List.of(choice.get(0))));
         for (var player : List.of(stale.player(), repeated.player(), unbound.player(), bad.player(), broken.player())) {
             ((PlayerControllerTeacher) player.getController()).closeObservation();
         }

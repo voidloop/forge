@@ -40,13 +40,6 @@ public final class MulliganDecision {
                 "items", List.of("mulligan", "keep")));
     }
 
-    public static boolean apply(List<Integer> answer) {
-        if (answer.size() != 1 || answer.get(0) < 0 || answer.get(0) > 1) {
-            throw new IllegalArgumentException("Invalid keep response");
-        }
-        return answer.get(0) == 1;
-    }
-
     public static DecisionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
         require(player);
         if (count < 0 || count > hand.size()

@@ -20,7 +20,7 @@ public final class CombatDamageDecision {
     private final Combat combat;
     private final Card source;
     private final GameEntity defender;
-    private final List<Card> targets;
+    final List<Card> targets;
     private final CardCollectionView offered;
     private final int damage;
 
@@ -114,7 +114,7 @@ public final class CombatDamageDecision {
         }
     }
 
-    public Map<Card, Integer> apply(List<Integer> answer) {
+    void validate(List<Integer> answer) {
         requireContext();
         if (answer == null || answer.size() % 2 != 0
                 || ((List<?>) answer).stream().anyMatch(v -> !(v instanceof Integer))) {
@@ -131,22 +131,5 @@ public final class CombatDamageDecision {
             total += amount;
         }
         if (total != damage) { throw new IllegalArgumentException("Combat damage must be assigned in full"); }
-        return result;
-    }
-
-    public List<Integer> encode(Map<Card, Integer> chosen) {
-        if (chosen == null) { throw new UnsupportedOperationException("Deferred combat damage outside vanilla scope"); }
-        var answer = new ArrayList<Integer>();
-        for (var entry : chosen.entrySet()) {
-            int index = entry.getKey() == null ? -1 : targets.indexOf(entry.getKey());
-            if (index < 0 || targets.get(index) != entry.getKey() || entry.getValue() == null) {
-                throw new IllegalArgumentException("Final damage map outside exact bindings");
-            }
-        }
-        for (int i = 0; i < targets.size(); i++) {
-            if (chosen.containsKey(targets.get(i))) { answer.add(i); answer.add(chosen.get(targets.get(i))); }
-        }
-        apply(answer);
-        return List.copyOf(answer);
     }
 }

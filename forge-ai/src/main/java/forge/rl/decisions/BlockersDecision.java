@@ -16,11 +16,11 @@ import java.util.*;
 public final class BlockersDecision {
     public final Map<String, Object> data;
     private final Player player;
-    private final Combat combat;
-    private final List<Card> attackers;
-    private final List<Card> blockers = new ArrayList<>();
+    final Combat combat;
+    final List<Card> attackers;
+    final List<Card> blockers = new ArrayList<>();
 
-    private void requireContext() {
+    void requireContext() {
         var game = player.getGame();
         if (game.getAge() != GameStage.Play || game.isGameOver()
                 || game.getCombat() != combat || combat.getAttackingPlayer() == player
@@ -47,7 +47,7 @@ public final class BlockersDecision {
         }
     }
 
-    private void requireAttackers() {
+    void requireAttackers() {
         List<Card> current = combat.getAttackers();
         if (current.size() != attackers.size()) { throw new IllegalArgumentException("Attackers changed during decision"); }
         for (int i = 0; i < attackers.size(); i++) {
@@ -90,7 +90,7 @@ public final class BlockersDecision {
                 "attackers", attackers.stream().map(a -> Map.of("key", view.reference(a), "name", a.getName())).toList()));
     }
 
-    private void validate(List<Integer> answer) {
+    void validate(List<Integer> answer) {
         if (answer == null || answer.size() % 2 != 0
                 || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))) {
             throw new IllegalArgumentException("Invalid blocker/attacker pairs");
@@ -110,36 +110,9 @@ public final class BlockersDecision {
         }
     }
 
-    private void validateNative() {
+    void validateNative() {
         String error = CombatUtil.validateBlocks(combat, player);
         if (error != null) { throw new IllegalArgumentException("Native block declaration invalid: " + error); }
     }
 
-    public void apply(List<Integer> answer) {
-        requireContext(); requireAttackers();
-        if (!combat.getAllBlockers().isEmpty()) { throw new IllegalArgumentException("Combat changed during decision"); }
-        validate(answer);
-        for (int i = 0; i < answer.size(); i += 2) {
-            Card attacker = attackers.get(answer.get(i + 1)), blocker = blockers.get(answer.get(i));
-            if (!CombatUtil.canBlock(attacker, blocker, combat)) { throw new IllegalArgumentException("Native block pair invalid"); }
-            combat.addBlocker(attacker, blocker);
-        }
-        validateNative();
-    }
-
-    public List<Integer> encode() {
-        requireContext(); requireAttackers();
-        var answer = new ArrayList<Integer>();
-        for (int a = 0; a < attackers.size(); a++) {
-            for (Card card : combat.getBlockers(attackers.get(a))) {
-                int b = blockers.indexOf(card);
-                if (b < 0 || blockers.get(b) != card) {
-                    throw new IllegalArgumentException("Final block declaration outside exact bindings");
-                }
-                answer.add(b); answer.add(a);
-            }
-        }
-        validate(answer); validateNative();
-        return List.copyOf(answer);
-    }
 }

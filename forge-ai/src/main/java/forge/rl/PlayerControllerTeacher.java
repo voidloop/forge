@@ -12,6 +12,7 @@ import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.StartingPlayerDecision;
 import forge.rl.decisions.TriggerDecision;
+import forge.rl.decisions.DecisionRecorder;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -90,7 +91,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             Player chosen = super.chooseStartingPlayer(isFirstGame);
             if (failure != null) { throw failure; }
-            callback.after(request.encode(chosen));
+            callback.after(DecisionRecorder.encode(request, chosen));
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
@@ -122,7 +123,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             if (cardsToReturn != 0) { callback.before(request.data); }
             var chosen = super.tuckCardsViaMulligan(hand, cardsToReturn);
             if (failure != null) { throw failure; }
-            var answer = request.encode(chosen);
+            var answer = DecisionRecorder.encode(request, chosen);
             if (cardsToReturn != 0) { callback.after(answer); }
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
@@ -150,7 +151,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             R result = original.get();
             if (failure != null) { throw failure; }
-            callback.after(request.encode(selected.apply(result)));
+            callback.after(DecisionRecorder.encode(request, selected.apply(result)));
             return result;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeAbility = null; activeKind = null; }
@@ -173,7 +174,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             super.declareAttackers(attacker, combat);
             if (failure != null) { throw failure; }
-            callback.after(request.encode());
+            callback.after(DecisionRecorder.encode(request));
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
     }
@@ -190,7 +191,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             super.declareBlockers(defender, combat);
             if (failure != null) { throw failure; }
-            callback.after(request.encode());
+            callback.after(DecisionRecorder.encode(request));
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
     }
@@ -208,7 +209,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             var chosen = super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder);
             if (failure != null) { throw failure; }
-            callback.after(request.encode(chosen));
+            callback.after(DecisionRecorder.encode(request, chosen));
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
@@ -226,7 +227,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             var chosen = super.orderMoveToZoneList(cards, destinationZone, source);
             if (failure != null) { throw failure; }
-            callback.after(request.encode(chosen));
+            callback.after(DecisionRecorder.encode(request, chosen));
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
@@ -245,7 +246,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
                 callback.before(request.data);
                 List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
                 if (failure != null) { throw failure; }
-                List<Integer> answer = request.encode(chosen);
+                List<Integer> answer = DecisionRecorder.encode(request, chosen);
                 pendingMana = chosen == null ? null : request.selected();
                 callback.after(answer);
                 return chosen;
@@ -255,9 +256,9 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
             if (failure != null) { throw failure; }
-            List<Integer> answer = request.encode(chosen);
-            pendingPriority = request.apply(answer);
-            callback.after(answer);
+            var captured = DecisionRecorder.capture(request, chosen);
+            pendingPriority = captured.choice();
+            callback.after(captured.answer());
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeAbility = null; activeKind = null; }
@@ -274,7 +275,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             super.orderAndPlaySimultaneousSa(abilities);
             if (failure != null) { throw failure; }
-            callback.after(request.encode());
+            callback.after(DecisionRecorder.encode(request));
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeTrigger = null; activeKind = null; }
     }
@@ -344,7 +345,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request);
             byte chosen = super.chooseColor(message, ability, colors);
             if (failure != null) { throw failure; }
-            callback.after(activeMana.encodeColor(chosen));
+            callback.after(DecisionRecorder.encodeColor(activeMana, chosen));
             return chosen;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { activeKind = null; }
@@ -367,7 +368,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             callback.before(request.data);
             boolean paid = super.payManaCost(cost, part, ability, prompt, matrix, effect);
             if (failure != null) { throw failure; }
-            callback.after(request.encode(paid));
+            callback.after(DecisionRecorder.encode(request, paid));
             return paid;
         } catch (RuntimeException error) { failure = error; throw error; }
         finally { payment = null; }

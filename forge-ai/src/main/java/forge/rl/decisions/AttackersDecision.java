@@ -17,11 +17,11 @@ import java.util.*;
 public final class AttackersDecision {
     public final Map<String, Object> data;
     private final Player player;
-    private final Combat combat;
-    private final List<Card> attackers;
-    private final List<GameEntity> defenders;
+    final Combat combat;
+    final List<Card> attackers;
+    final List<GameEntity> defenders;
 
-    private void requireContext() {
+    void requireContext() {
         var game = player.getGame();
         if (game.getAge() != GameStage.Play || game.isGameOver()
                 || !game.getPhaseHandler().is(PhaseType.COMBAT_DECLARE_ATTACKERS, player)
@@ -74,7 +74,7 @@ public final class AttackersDecision {
                 "defenders", defenders.stream().map(d -> Map.of("key", view.reference(d), "name", d.getName())).toList()));
     }
 
-    private List<Card> validate(List<Integer> answer) {
+    List<Card> validate(List<Integer> answer) {
         if (answer == null || answer.size() % 2 != 0
                 || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))) {
             throw new IllegalArgumentException("Invalid attacker/defender pairs");
@@ -96,30 +96,4 @@ public final class AttackersDecision {
         return chosen;
     }
 
-    public void apply(List<Integer> answer) {
-        requireContext();
-        if (!combat.getAttackers().isEmpty()) { throw new IllegalArgumentException("Combat changed during decision"); }
-        var chosen = validate(answer);
-        for (int i = 0; i < chosen.size(); i++) {
-            combat.addAttacker(chosen.get(i), defenders.get(answer.get(i * 2 + 1)));
-        }
-        if (!CombatUtil.validateAttackers(combat)) { throw new IllegalArgumentException("Native attack declaration invalid"); }
-    }
-
-    public List<Integer> encode() {
-        requireContext();
-        var answer = new ArrayList<Integer>();
-        for (Card card : combat.getAttackers()) {
-            GameEntity defender = combat.getDefenderByAttacker(card);
-            int a = attackers.indexOf(card), d = defenders.indexOf(defender);
-            if (a < 0 || attackers.get(a) != card || d < 0 || defenders.get(d) != defender) {
-                throw new IllegalArgumentException("Final attack declaration outside exact bindings");
-            }
-            answer.add(a);
-            answer.add(d);
-        }
-        validate(answer);
-        if (!CombatUtil.validateAttackers(combat)) { throw new IllegalArgumentException("Native attack declaration invalid"); }
-        return List.copyOf(answer);
-    }
 }

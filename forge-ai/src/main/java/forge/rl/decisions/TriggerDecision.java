@@ -19,11 +19,11 @@ import java.util.Map;
 /** Order exact mandatory ETB wrappers; automatic effects and resolution stay in Forge. */
 public final class TriggerDecision {
     public final Map<String, Object> data;
-    private final Player player;
-    private final List<Binding> bindings;
-    private final List<SpellAbility> stackBefore;
+    final Player player;
+    final List<Binding> bindings;
+    final List<SpellAbility> stackBefore;
 
-    private record Binding(WrappedAbility wrapper, Card host, Trigger trigger) { }
+    record Binding(WrappedAbility wrapper, Card host, Trigger trigger) { }
 
     static boolean hasSupportedTriggers(Card card) {
         return card.getTriggers().isEmpty() || hasAutomaticEtb(card);
@@ -85,7 +85,7 @@ public final class TriggerDecision {
                 && isMandatoryEtb(wrapper.getTrigger()) && isAutomaticEffect(wrapper.getWrappedAbility());
     }
 
-    private static List<SpellAbility> stack(Player player) {
+    static List<SpellAbility> stack(Player player) {
         List<SpellAbility> result = new ArrayList<>();
         player.getGame().getStack().forEach(entry -> result.add(entry.getSpellAbility()));
         return List.copyOf(result);
@@ -119,7 +119,7 @@ public final class TriggerDecision {
                 && abilities.stream().map(SpellAbility::getHostCard).distinct().count() == abilities.size();
     }
 
-    private void requireLiveSources() {
+    void requireLiveSources() {
         if (!bindings.stream().allMatch(this::hasLiveVisibleSource)) {
             throw new IllegalArgumentException("Stale or foreign ETB trigger");
         }
@@ -144,7 +144,7 @@ public final class TriggerDecision {
         requireLiveSources();
     }
 
-    private static boolean sameAbilities(List<SpellAbility> first, List<SpellAbility> second) {
+    static boolean sameAbilities(List<SpellAbility> first, List<SpellAbility> second) {
         if (first.size() != second.size()) { return false; }
         for (int i = 0; i < first.size(); i++) {
             if (first.get(i) != second.get(i)) { return false; }
@@ -156,33 +156,23 @@ public final class TriggerDecision {
         return bindings.stream().anyMatch(binding -> binding.wrapper() == ability);
     }
 
-    public void apply(List<Integer> answer) {
-        if (!isPermutation(answer)) { throw new IllegalArgumentException("Mandatory ETB preparation answer"); }
-        requireLiveSources();
-        if (!sameAbilities(stack(player), stackBefore)) {
-            throw new IllegalArgumentException("Stale ETB preparation");
-        }
-        for (int index : answer) { player.getGame().getStack().add(bindings.get(index).wrapper()); }
-    }
-
-    private boolean isPermutation(List<Integer> answer) {
+    boolean isPermutation(List<Integer> answer) {
         return answer != null && answer.size() == bindings.size()
                 && ((List<?>) answer).stream().allMatch(value -> value instanceof Integer index && index >= 0 && index < bindings.size())
                 && new HashSet<>(answer).size() == bindings.size();
     }
 
-    public List<Integer> encode() {
+    List<SpellAbility> preparedStack() {
         requireLiveSources();
         var current = stack(player);
         if (!hasPreservedStackTail(current)) {
             throw new IllegalStateException("Native ETB preparation did not preserve exact stack bindings");
         }
-        List<Integer> answer = new ArrayList<>();
-        for (int i = bindings.size() - 1; i >= 0; i--) { answer.add(bindingIndex(current.get(i))); }
-        if (!isPermutation(answer)) {
+        var indices = current.subList(0, bindings.size()).stream().map(this::bindingIndex).toList();
+        if (!isPermutation(indices)) {
             throw new IllegalStateException("Native ETB preparation did not preserve exact wrappers");
         }
-        return List.copyOf(answer);
+        return current;
     }
 
     private boolean hasPreservedStackTail(List<SpellAbility> current) {
@@ -190,7 +180,7 @@ public final class TriggerDecision {
                 && sameAbilities(current.subList(bindings.size(), current.size()), stackBefore);
     }
 
-    private int bindingIndex(SpellAbility ability) {
+    int bindingIndex(SpellAbility ability) {
         for (int i = 0; i < bindings.size(); i++) {
             if (bindings.get(i).wrapper() == ability) { return i; }
         }
