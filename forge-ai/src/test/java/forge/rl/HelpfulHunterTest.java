@@ -30,7 +30,7 @@ public class HelpfulHunterTest {
         return card;
     }
 
-    private static ManaPaymentBoundaryTest.Fixture fixture(LobbyPlayer lobby) {
+    static ManaPaymentBoundaryTest.Fixture fixture(LobbyPlayer lobby) {
         var f = ManaPaymentBoundaryTest.fixture(lobby, false);
         f.player().getZone(ZoneType.Hand).remove(f.spell().getHostCard());
         f.lands().forEach(card -> f.player().getZone(ZoneType.Battlefield).remove(card));
@@ -136,7 +136,7 @@ public class HelpfulHunterTest {
         assertEquals(probe.calls, List.of("prepare", "order", "resolve"));
     }
 
-    private static final class Recording implements IDecisionRecordCallback {
+    static final class Recording implements IDecisionRecordCallback {
         final List<Map<String, Object>> requests = new ArrayList<>();
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
@@ -148,12 +148,12 @@ public class HelpfulHunterTest {
         @Override public void executed(Map<String, Object> result) { assertNull(execution); execution = result; }
     }
 
-    private static void opponent(ManaPaymentBoundaryTest.Fixture f, IDecisionRecordCallback callback) {
+    static void opponent(ManaPaymentBoundaryTest.Fixture f, IDecisionRecordCallback callback) {
         Player opponent = f.game().getPlayers().get(1);
         opponent.dangerouslySetController(new PlayerControllerTeacher(f.game(), opponent, new LobbyPlayerAi("second", null), callback));
     }
 
-    private static void close(ManaPaymentBoundaryTest.Fixture f) {
+    static void close(ManaPaymentBoundaryTest.Fixture f) {
         for (Player player : f.game().getPlayers()) {
             if (player.getController() instanceof PlayerControllerRl rl) { rl.closeObservation(); }
             if (player.getController() instanceof PlayerControllerTeacher teacher) { teacher.closeObservation(); }
@@ -250,7 +250,7 @@ public class HelpfulHunterTest {
     }
 
     @Test public void unsupportedShapesSimultaneousTriggersAndPreparationErrorsStayExplicit() {
-        for (String kind : List.of("optional", "draw_two", "simultaneous", "bad_answer", "callback")) {
+        for (String kind : List.of("optional", "optional_draw", "simultaneous", "bad_answer", "callback")) {
             var f = fixture(new LobbyPlayerAi("first", null));
             f.game().getPhaseHandler().onStackResolved();
             f.game().getPhaseHandler().mainLoopStep();
@@ -259,7 +259,7 @@ public class HelpfulHunterTest {
             var wrapper = (WrappedAbility) f.game().getStack().peekAbility();
             f.game().getStack().clear();
             if (kind.equals("optional")) { wrapper.setOptionalTrigger(true); }
-            if (kind.equals("draw_two")) { wrapper.getWrappedAbility().getMapParams().put("NumCards", "2"); }
+            if (kind.equals("optional_draw")) { wrapper.getWrappedAbility().getMapParams().put("Upto", "True"); }
             RuntimeException callbackFailure = new IllegalStateException("client preparation failed");
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), request -> {
                 if (kind.equals("callback")) { throw callbackFailure; }

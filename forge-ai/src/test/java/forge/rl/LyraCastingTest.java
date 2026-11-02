@@ -195,7 +195,7 @@ public class LyraCastingTest {
     }
 
     @Test public void otherKeywordsTriggersAndStaticShapesStillStopBeforeCallingTheClient() {
-        for (String kind : List.of("Serra Angel", "Hinterland Sanctifier", "static")) {
+        for (String kind : List.of("Serra Angel", "Ajani's Pridemate", "static")) {
             var f = fixture(new LobbyPlayerRl("first", request -> { throw new AssertionError("Unexpected client question"); }));
             if (kind.equals("static")) {
                 f.spell().getHostCard().getStaticAbilities().getFirst().getMapParams().put("AddPower", "2");

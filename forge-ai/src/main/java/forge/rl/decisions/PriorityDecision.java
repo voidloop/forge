@@ -111,7 +111,7 @@ public final class PriorityDecision {
         if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
             throw new IllegalStateException("Player does not have live priority");
         }
-        // shortcut: basic lands, passive Lyra traits, self ETB draw and fixed damage; extend with later families.
+        // shortcut: basic lands, passive Lyra traits, automatic ETB and fixed damage; extend with later families.
         if (!game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
             throw new UnsupportedOperationException("Ordinary priority pending context");
         }
