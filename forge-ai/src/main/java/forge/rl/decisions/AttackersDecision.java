@@ -23,23 +23,15 @@ public final class AttackersDecision {
 
     void requireContext() {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Play || game.isGameOver()
-                || !game.getPhaseHandler().is(PhaseType.COMBAT_DECLARE_ATTACKERS, player)
-                || game.getCombat() != combat || combat.getAttackingPlayer() != player) {
+        if (hasInvalidDeclarationContext()) {
             throw new IllegalArgumentException("Invalid native attacker declaration context");
         }
         // shortcut: ordinary vanilla duel only; extend combat costs/keywords after their own proof.
-        if (game.getRules().getGameType() != GameType.Constructed
-                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
-                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
-                || player.getDeclaresAttackers() != null || !game.getStack().isEmpty()
-                || !game.getCardsIn(ZoneType.Command).isEmpty()
-                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
-                || combat.getDefenders().size() != 1 || combat.getDefenders().get(0) != player.getOpponents().get(0)) {
+        if (isOutsideDeclarationScope()) {
             throw new UnsupportedOperationException("Ordinary attacker declaration scope");
         }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isFaceDown() || !card.getView().canBeShownTo(player.getView())) {
+            if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Attacker declaration visibility");
             }
             if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
@@ -51,7 +43,7 @@ public final class AttackersDecision {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
-        if (attacker != player || !combat.getAttackers().isEmpty()) {
+        if (hasUnboundDeclaration(attacker)) {
             throw new IllegalArgumentException("Unbound or nonempty attacker declaration");
         }
         attackers = List.copyOf(CombatUtil.getPossibleAttackers(player));
@@ -75,20 +67,17 @@ public final class AttackersDecision {
     }
 
     List<Card> validate(List<Integer> answer) {
-        if (answer == null || answer.size() % 2 != 0
-                || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))) {
+        if (hasInvalidPairEncoding(answer)) {
             throw new IllegalArgumentException("Invalid attacker/defender pairs");
         }
         var chosen = new ArrayList<Card>();
         for (int i = 0; i < answer.size(); i += 2) {
             int a = answer.get(i), d = answer.get(i + 1);
-            if (a < 0 || a >= attackers.size() || d < 0 || d >= defenders.size()) {
+            if (isOutsidePairBindings(a, d)) {
                 throw new IllegalArgumentException("Invalid attacker/defender index");
             }
             Card card = attackers.get(a);
-            if (chosen.contains(card) || player.getGame().getCardState(card, null) != card
-                    || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
-                    || !CombatUtil.canAttack(card, defenders.get(d))) {
+            if (isIllegalAttacker(card, d, chosen)) {
                 throw new IllegalArgumentException("Duplicate, stale or illegal attacker");
             }
             chosen.add(card);
@@ -96,4 +85,44 @@ public final class AttackersDecision {
         return chosen;
     }
 
+    private boolean hasInvalidDeclarationContext() {
+        var game = player.getGame();
+        return game.getAge() != GameStage.Play || game.isGameOver()
+                || !game.getPhaseHandler().is(PhaseType.COMBAT_DECLARE_ATTACKERS, player)
+                || game.getCombat() != combat || combat.getAttackingPlayer() != player;
+    }
+
+    private boolean isOutsideDeclarationScope() {
+        var game = player.getGame();
+        return game.getRules().getGameType() != GameType.Constructed
+                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
+                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
+                || player.getDeclaresAttackers() != null || !game.getStack().isEmpty()
+                || !game.getCardsIn(ZoneType.Command).isEmpty()
+                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
+                || combat.getDefenders().size() != 1 || combat.getDefenders().get(0) != player.getOpponents().get(0);
+    }
+
+    private boolean isHiddenCard(Card card) {
+        return card.isFaceDown() || !card.getView().canBeShownTo(player.getView());
+    }
+
+    private static boolean hasInvalidPairEncoding(List<Integer> answer) {
+        return answer == null || answer.size() % 2 != 0
+                || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer));
+    }
+
+    private boolean hasUnboundDeclaration(Player attacker) {
+        return attacker != player || !combat.getAttackers().isEmpty();
+    }
+
+    private boolean isOutsidePairBindings(int a, int d) {
+        return a < 0 || a >= attackers.size() || d < 0 || d >= defenders.size();
+    }
+
+    private boolean isIllegalAttacker(Card card, int d, List<Card> chosen) {
+        return chosen.contains(card) || player.getGame().getCardState(card, null) != card
+                || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
+                || !CombatUtil.canAttack(card, defenders.get(d));
+    }
 }

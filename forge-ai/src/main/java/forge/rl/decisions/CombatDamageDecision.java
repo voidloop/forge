@@ -1,6 +1,7 @@
 package forge.rl.decisions;
 
 import forge.rl.StateReader;
+import forge.game.Game;
 import forge.game.GameEntity;
 import forge.game.GameStage;
 import forge.game.GameType;
@@ -34,10 +35,7 @@ public final class CombatDamageDecision {
         this.targets = List.copyOf(targets);
         this.damage = damage;
         requireContext();
-        if (!overrideOrder || (remaining == null) != (defender == null)
-                || remaining != null && (remaining.stream().noneMatch(c -> c == source)
-                || remaining.stream().anyMatch(c -> !combat.isAttacking(c)
-                || player.getGame().getCardState(c, null) != c))) {
+        if (hasInvalidAssignmentArguments(remaining, overrideOrder)) {
             throw new IllegalArgumentException("Invalid native damage assignment arguments");
         }
         data = Map.of("state", view.snapshot(), "options", StateReader.data(
@@ -58,32 +56,27 @@ public final class CombatDamageDecision {
 
     private void requireContext() {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Play || game.isGameOver() || game.getCombat() != combat
-                || !game.getPhaseHandler().is(PhaseType.COMBAT_DAMAGE, combat.getAttackingPlayer())
-                || source.getController() != player || game.getCardState(source, null) != source
-                || !source.isInZone(ZoneType.Battlefield) || damage < 0 || source.getNetCombatDamage() != damage) {
+        if (hasInvalidDamageContext()) {
             throw new IllegalArgumentException("Invalid or stale native combat damage context");
         }
         requireScope(player);
-        if (targets.isEmpty() || new HashSet<>(targets).size() != targets.size()) {
+        if (hasInvalidTargets()) {
             throw new IllegalArgumentException("Empty or duplicate damage targets");
         }
         if (defender != null) {
-            if (player != combat.getAttackingPlayer() || !combat.isAttacking(source)
-                    || defender != player.getOpponents().get(0) || combat.getDefenderByAttacker(source) != defender) {
+            if (hasUnboundAttackingAssignment()) {
                 throw new IllegalArgumentException("Unbound attacking damage assignment");
             }
             requireSame(targets, combat.getBlockers(source));
         } else {
-            if (player == combat.getAttackingPlayer() || !combat.isBlocking(source) || targets.size() != 1) {
+            if (hasUnboundBlockingAssignment()) {
                 throw new IllegalArgumentException("Unbound blocking damage assignment");
             }
             requireSame(targets, combat.getAttackersBlockedBy(source));
         }
         requireSame(targets, offered);
         for (Card card : targets) {
-            if (game.getCardState(card, null) != card || !card.isInZone(ZoneType.Battlefield)
-                    || card.getController() != player.getOpponents().get(0)) {
+            if (isForeignOrStaleTarget(card)) {
                 throw new IllegalArgumentException("Foreign or stale damage target");
             }
         }
@@ -92,21 +85,15 @@ public final class CombatDamageDecision {
     static void requireScope(Player player) {
         var game = player.getGame();
         var combat = game.getCombat();
-        if (game.getAge() != GameStage.Play || game.isGameOver() || combat == null
-                || !game.getPhaseHandler().is(PhaseType.COMBAT_DAMAGE, combat.getAttackingPlayer())) {
+        if (hasInvalidDamagePhase(game, combat)) {
             throw new IllegalArgumentException("Invalid native combat damage phase");
         }
         // shortcut: current unordered vanilla duel only; legacy orders and keywords need their own proof.
-        if (game.getRules().getGameType() != GameType.Constructed || game.getRules().hasOrderCombatants()
-                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
-                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
-                || !game.getStack().isEmpty() || !game.getCardsIn(ZoneType.Command).isEmpty()
-                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
-                || combat.getDefenders().size() != 1 || !(combat.getDefenders().get(0) instanceof Player)) {
+        if (isOutsideDamageScope(game, player, combat)) {
             throw new UnsupportedOperationException("Ordinary combat damage scope");
         }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isFaceDown() || !card.getView().canBeShownTo(player.getView())) {
+            if (isHiddenCard(card, player)) {
                 throw new UnsupportedOperationException("Combat damage visibility");
             }
             if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
@@ -116,20 +103,87 @@ public final class CombatDamageDecision {
 
     void validate(List<Integer> answer) {
         requireContext();
-        if (answer == null || answer.size() % 2 != 0
-                || ((List<?>) answer).stream().anyMatch(v -> !(v instanceof Integer))) {
+        if (hasInvalidPairEncoding(answer)) {
             throw new IllegalArgumentException("Invalid combat damage pairs");
         }
         Map<Card, Integer> result = new LinkedHashMap<>();
         long total = 0;
         for (int i = 0; i < answer.size(); i += 2) {
             int target = answer.get(i), amount = answer.get(i + 1);
-            if (target < 0 || target >= targets.size() || amount < 0
-                    || result.putIfAbsent(targets.get(target), amount) != null) {
-                throw new IllegalArgumentException("Invalid, negative or duplicate damage assignment");
-            }
+            addAssignment(result, target, amount);
             total += amount;
         }
         if (total != damage) { throw new IllegalArgumentException("Combat damage must be assigned in full"); }
+    }
+
+    private boolean hasInvalidAssignmentArguments(CardCollectionView remaining, boolean overrideOrder) {
+        return !overrideOrder || (remaining == null) != (defender == null)
+                || remaining != null && (remaining.stream().noneMatch(c -> c == source)
+                        || remaining.stream().anyMatch(c -> !combat.isAttacking(c)
+                                || player.getGame().getCardState(c, null) != c));
+    }
+
+    private boolean hasInvalidDamageContext() {
+        var game = player.getGame();
+        return game.getAge() != GameStage.Play || game.isGameOver() || game.getCombat() != combat
+                || !game.getPhaseHandler().is(PhaseType.COMBAT_DAMAGE, combat.getAttackingPlayer())
+                || source.getController() != player || game.getCardState(source, null) != source
+                || !source.isInZone(ZoneType.Battlefield) || damage < 0 || source.getNetCombatDamage() != damage;
+    }
+
+    private boolean hasInvalidTargets() {
+        return targets.isEmpty() || new HashSet<>(targets).size() != targets.size();
+    }
+
+    private boolean hasUnboundAttackingAssignment() {
+        return player != combat.getAttackingPlayer() || !combat.isAttacking(source)
+                || defender != player.getOpponents().get(0) || combat.getDefenderByAttacker(source) != defender;
+    }
+
+    private boolean hasUnboundBlockingAssignment() {
+        return player == combat.getAttackingPlayer() || !combat.isBlocking(source) || targets.size() != 1;
+    }
+
+    private boolean isForeignOrStaleTarget(Card card) {
+        var game = player.getGame();
+        return game.getCardState(card, null) != card || !card.isInZone(ZoneType.Battlefield)
+                || card.getController() != player.getOpponents().get(0);
+    }
+
+    private static boolean hasInvalidDamagePhase(Game game, Combat combat) {
+        return game.getAge() != GameStage.Play || game.isGameOver() || combat == null
+                || !game.getPhaseHandler().is(PhaseType.COMBAT_DAMAGE, combat.getAttackingPlayer());
+    }
+
+    private static boolean isOutsideDamageScope(Game game, Player player, Combat combat) {
+        return game.getRules().getGameType() != GameType.Constructed || game.getRules().hasOrderCombatants()
+                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
+                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
+                || !game.getStack().isEmpty() || !game.getCardsIn(ZoneType.Command).isEmpty()
+                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
+                || combat.getDefenders().size() != 1 || !(combat.getDefenders().get(0) instanceof Player);
+    }
+
+    private static boolean isHiddenCard(Card card, Player player) {
+        return card.isFaceDown() || !card.getView().canBeShownTo(player.getView());
+    }
+
+    private static boolean hasInvalidPairEncoding(List<Integer> answer) {
+        return answer == null || answer.size() % 2 != 0
+                || ((List<?>) answer).stream().anyMatch(v -> !(v instanceof Integer));
+    }
+
+    private void addAssignment(Map<Card, Integer> result, int target, int amount) {
+        if (hasInvalidDamageAmount(target, amount)) {
+            throw new IllegalArgumentException("Invalid, negative or duplicate damage assignment");
+        }
+        Integer previous = result.putIfAbsent(targets.get(target), amount);
+        if (previous != null) {
+            throw new IllegalArgumentException("Invalid, negative or duplicate damage assignment");
+        }
+    }
+
+    private boolean hasInvalidDamageAmount(int target, int amount) {
+        return target < 0 || target >= targets.size() || amount < 0;
     }
 }

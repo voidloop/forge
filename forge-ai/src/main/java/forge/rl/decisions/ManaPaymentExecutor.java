@@ -20,34 +20,53 @@ public record ManaPaymentExecutor(ManaPaymentDecision request, List<Integer> ans
         for (int j = split; j < answer.size(); j++) {
             int i = answer.get(j);
             if (request.needsSourceActivation(i)) {
-                while (cursor < split) {
-                    int activated = answer.get(cursor++);
-                    activate(activated);
-                    if (activated == i) { break; }
-                }
+                cursor = activateThroughSource(cursor, split, i);
             }
             if (ManaPaymentDecision.isFinalManaSpend(j, answer)) {
-                while (cursor < split) { activate(answer.get(cursor++)); }
+                cursor = activateRemaining(cursor, split);
             }
-            Mana selected = null;
-            for (Mana mana : request.player.getManaPool()) { if (request.source(mana) == i) { selected = mana; break; } }
-            if (selected == null) { throw new IllegalStateException("Native mana unit is unavailable"); }
-            // ManaPool removes by equals, which can match another source; never remove that unit silently.
-            for (Mana mana : request.player.getManaPool()) {
-                if (mana.equals(selected)) {
-                    if (mana != selected) { throw new UnsupportedOperationException("Native ManaPool cannot remove the selected equivalent source"); }
-                    break;
-                }
-            }
-            if (!request.player.getManaPool().tryPayCostWithMana(request.root, debt, selected, false)) {
-                throw new IllegalStateException("Native mana spending failed");
-            }
-            request.root.getPayingMana().add(selected);
+            spendMana(i);
         }
-        while (cursor < split) { activate(answer.get(cursor++)); }
+        activateRemaining(cursor, split);
         boolean paid = answer.get(0) == 1;
         if (!appliedPaymentMatches()) { throw new IllegalStateException("Native payment diverged"); }
         return paid;
+    }
+
+    private int activateThroughSource(int cursor, int split, int source) {
+        while (cursor < split) {
+            int activated = answer.get(cursor++);
+            activate(activated);
+            if (activated == source) { break; }
+        }
+        return cursor;
+    }
+
+    private int activateRemaining(int cursor, int split) {
+        while (cursor < split) { activate(answer.get(cursor++)); }
+        return cursor;
+    }
+
+    private void spendMana(int source) {
+        Mana selected = null;
+        for (Mana mana : request.player.getManaPool()) {
+            if (request.source(mana) == source) { selected = mana; break; }
+        }
+        if (selected == null) { throw new IllegalStateException("Native mana unit is unavailable"); }
+        requireExactPoolRemoval(selected);
+        boolean spent = request.player.getManaPool().tryPayCostWithMana(request.root, debt, selected, false);
+        if (!spent) { throw new IllegalStateException("Native mana spending failed"); }
+        request.root.getPayingMana().add(selected);
+    }
+
+    private void requireExactPoolRemoval(Mana selected) {
+        // ManaPool removes by equals, which can match another source; never remove that unit silently.
+        for (Mana mana : request.player.getManaPool()) {
+            if (mana.equals(selected)) {
+                if (mana != selected) { throw new UnsupportedOperationException("Native ManaPool cannot remove the selected equivalent source"); }
+                break;
+            }
+        }
     }
 
     private boolean appliedPaymentMatches() {
@@ -84,7 +103,7 @@ public record ManaPaymentExecutor(ManaPaymentDecision request, List<Integer> ans
 
     private boolean payActivationTapCost(SpellAbility ability) {
         CostTap tap = (CostTap) ability.getPayCosts().getCostParts().get(0);
-        return request.canPayActivationTapCost(ability, tap)
-                && tap.payAsDecided(request.player, PaymentDecision.number(1), ability, false);
+        if (!request.canPayActivationTapCost(ability, tap)) { return false; }
+        return tap.payAsDecided(request.player, PaymentDecision.number(1), ability, false);
     }
 }

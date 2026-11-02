@@ -1,6 +1,8 @@
 package forge.rl.decisions;
 
 import forge.rl.StateReader;
+import forge.game.phase.PhaseHandler;
+import forge.game.Game;
 
 import forge.card.ColorSet;
 import forge.card.MagicColor;
@@ -41,23 +43,20 @@ public final class ManaDecision {
 
     private static SpellAbility requireContext(Player player) {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
+        if (hasNoLiveManaPriority(game, player)) {
             throw new IllegalStateException("Player does not have live mana priority");
         }
-        if (!game.getStack().isEmpty() || !game.getCardsIn(ZoneType.Command).isEmpty()
-                || !player.getCardsIn(ZoneType.Hand).isEmpty()) {
+        if (hasUnsupportedPriorityState(game, player)) {
             throw new UnsupportedOperationException("single mana priority context");
         }
         SpellAbility source = null;
         // shortcut: only this mana source and passive mana-preserving enchantments; expand after a native proof.
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isFaceDown() || !card.getView().canBeShownTo(player.getView()) || !card.getTriggers().isEmpty()) {
+            if (hasUnsupportedBattlefieldCard(card, player)) {
                 throw new UnsupportedOperationException("single mana battlefield");
             }
-            if (card.isEnchantment() && card.getStaticAbilities().size() == 1
-                    && card.getStaticAbilities().get(0).getParamOrDefault("Mode", "").equals("UnspentMana")
-                    && card.getSpellAbilities().stream().noneMatch(SpellAbility::isActivatedAbility)) { continue; }
-            if (card.getController() != player || !card.isLand()) {
+            if (isManaPreservingEnchantment(card)) { continue; }
+            if (isForeignOrNonLandSource(card, player)) {
                 throw new UnsupportedOperationException("single mana source");
             }
             for (SpellAbility ability : card.getSpellAbilities()) {
@@ -91,8 +90,7 @@ public final class ManaDecision {
     public Choice selected() { return choice; }
 
     static int index(List<Integer> answer, int count) {
-        if (answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
-                || answer.get(0) < 0 || answer.get(0) >= count) {
+        if (hasInvalidIndexAnswer(answer, count)) {
             throw new IllegalArgumentException("Invalid mana decision answer");
         }
         return answer.get(0);
@@ -111,8 +109,8 @@ public final class ManaDecision {
         private Choice(SpellAbility ability, Card card) { this.ability = ability; this.card = card; }
 
         public void before(Player player, SpellAbility selected) {
-            if (requireContext(player) != ability || selected != ability || ability.getHostCard() != card
-                    || player.getGame().getCardState(card, null) != card || !ability.canPlay()) {
+            SpellAbility current = requireContext(player);
+            if (isStaleOrUnboundActivation(player, selected, current)) {
                 throw new IllegalArgumentException("Stale or unbound mana activation");
             }
             if (!ability.getManaPart().getExpressChoice().isEmpty()) {
@@ -128,8 +126,7 @@ public final class ManaDecision {
         ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
         public Map<String, Object> colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
-            if (before == null || color != 0 || source != ability || ability.getHostCard() != card || !card.isTapped()
-                    || player.getManaPool().totalMana() != beforeTotal || !java.util.Arrays.equals(amounts(player), before)) {
+            if (hasUnboundColorRequest(player, source)) {
                 throw new IllegalStateException("Unbound or repeated mana color question");
             }
             samePriority(player);
@@ -140,8 +137,7 @@ public final class ManaDecision {
 
         private void samePriority(Player player) {
             var handler = player.getGame().getPhaseHandler();
-            if (handler.getPriorityPlayer() != priority || handler.getPhase() != phase || handler.getTurn() != turn
-                    || !player.getGame().getStack().isEmpty()) {
+            if (hasChangedPriority(player, handler)) {
                 throw new IllegalStateException("Mana activation changed priority or stack context");
             }
         }
@@ -149,8 +145,7 @@ public final class ManaDecision {
         public void after(Player player, boolean reported) {
             samePriority(player);
             int[] after = amounts(player);
-            if (!reported || color == 0 || !card.isTapped() || !card.isInZone(ZoneType.Battlefield)
-                    || player.getManaPool().totalMana() != beforeTotal + 1) {
+            if (hasIncompleteActivation(player, reported)) {
                 throw new IllegalStateException("Native mana activation did not complete");
             }
             for (int i = 0; i < after.length; i++) {
@@ -159,10 +154,58 @@ public final class ManaDecision {
             }
         }
 
+        private boolean isStaleOrUnboundActivation(Player player, SpellAbility selected, SpellAbility current) {
+            return current != ability || selected != ability || ability.getHostCard() != card
+                    || player.getGame().getCardState(card, null) != card || !ability.canPlay();
+        }
+
+        private boolean hasUnboundColorRequest(Player player, SpellAbility source) {
+            return before == null || color != 0 || source != ability || ability.getHostCard() != card || !card.isTapped()
+                    || player.getManaPool().totalMana() != beforeTotal || !java.util.Arrays.equals(amounts(player), before);
+        }
+
+        private boolean hasChangedPriority(Player player, PhaseHandler handler) {
+            return handler.getPriorityPlayer() != priority || handler.getPhase() != phase || handler.getTurn() != turn
+                    || !player.getGame().getStack().isEmpty();
+        }
+
+        private boolean hasIncompleteActivation(Player player, boolean reported) {
+            return !reported || color == 0 || !card.isTapped() || !card.isInZone(ZoneType.Battlefield)
+                    || player.getManaPool().totalMana() != beforeTotal + 1;
+        }
+
         private static int[] amounts(Player player) {
             int[] result = new int[MagicColor.WUBRGC.length];
             for (int i = 0; i < result.length; i++) { result[i] = player.getManaPool().getAmountOfColor(MagicColor.WUBRGC[i]); }
             return result;
         }
+    }
+
+    private static boolean hasNoLiveManaPriority(Game game, Player player) {
+        return game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player;
+    }
+
+    private static boolean hasUnsupportedPriorityState(Game game, Player player) {
+        return !game.getStack().isEmpty() || !game.getCardsIn(ZoneType.Command).isEmpty()
+                || !player.getCardsIn(ZoneType.Hand).isEmpty();
+    }
+
+    private static boolean hasUnsupportedBattlefieldCard(Card card, Player player) {
+        return card.isFaceDown() || !card.getView().canBeShownTo(player.getView()) || !card.getTriggers().isEmpty();
+    }
+
+    private static boolean isManaPreservingEnchantment(Card card) {
+        return card.isEnchantment() && card.getStaticAbilities().size() == 1
+                && card.getStaticAbilities().get(0).getParamOrDefault("Mode", "").equals("UnspentMana")
+                && card.getSpellAbilities().stream().noneMatch(SpellAbility::isActivatedAbility);
+    }
+
+    private static boolean isForeignOrNonLandSource(Card card, Player player) {
+        return card.getController() != player || !card.isLand();
+    }
+
+    private static boolean hasInvalidIndexAnswer(List<Integer> answer, int count) {
+        return answer == null || answer.size() != 1 || !(((List<?>) answer).get(0) instanceof Integer)
+                || answer.get(0) < 0 || answer.get(0) >= count;
     }
 }

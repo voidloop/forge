@@ -1,6 +1,7 @@
 package forge.rl.decisions;
 
 import forge.rl.StateReader;
+import forge.game.Game;
 
 import forge.StaticData;
 import forge.MulliganDefs;
@@ -19,20 +20,14 @@ import java.util.Map;
 public final class MulliganDecision {
     static void require(Player player) {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Mulligan || game.getPhaseHandler().getPhase() != null
-                || game.getRules().getGameType() != GameType.Constructed
-                || game.getPlayers().size() != 2
-                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
-                || StaticData.instance().getFilteredHandsEnabled()
-                || StaticData.instance().getMulliganRule() != MulliganDefs.MulliganRule.London
-                || game.getPlayers().stream().anyMatch(p -> !p.getCardsIn(ZoneType.Command).isEmpty())) {
+        if (isOutsideLondonDuel(game)) {
             throw new UnsupportedOperationException("Mulligan outside single-hand London duel");
         }
     }
 
     public static Map<String, Object> keep(Player player, StateReader view, Player first, int count) {
         require(player);
-        if (!player.getGame().getPlayers().contains(first) || count < 0) {
+        if (hasInvalidKeepContext(player, first, count)) {
             throw new IllegalArgumentException("Invalid native mulligan context");
         }
         return Map.of("state", view.snapshot(), "options", Map.of("kind", "mulligan_keep",
@@ -42,12 +37,30 @@ public final class MulliganDecision {
 
     public static DecisionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
         require(player);
-        if (count < 0 || count > hand.size()
-                || hand.size() != player.getCardsIn(ZoneType.Hand).size()
-                || !player.getCardsIn(ZoneType.Hand).containsAll(hand)) {
+        if (hasInvalidTuckContext(player, hand, count)) {
             throw new UnsupportedOperationException("Invalid native London tuck count or hand");
         }
         return new DecisionRequest<>(player, view, "mulligan_tuck", hand, "", count, count,
                 false, null, null, null);
+    }
+
+    private static boolean isOutsideLondonDuel(Game game) {
+        return game.getAge() != GameStage.Mulligan || game.getPhaseHandler().getPhase() != null
+                || game.getRules().getGameType() != GameType.Constructed
+                || game.getPlayers().size() != 2
+                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
+                || StaticData.instance().getFilteredHandsEnabled()
+                || StaticData.instance().getMulliganRule() != MulliganDefs.MulliganRule.London
+                || game.getPlayers().stream().anyMatch(p -> !p.getCardsIn(ZoneType.Command).isEmpty());
+    }
+
+    private static boolean hasInvalidKeepContext(Player player, Player first, int count) {
+        return !player.getGame().getPlayers().contains(first) || count < 0;
+    }
+
+    private static boolean hasInvalidTuckContext(Player player, CardCollectionView hand, int count) {
+        return count < 0 || count > hand.size()
+                || hand.size() != player.getCardsIn(ZoneType.Hand).size()
+                || !player.getCardsIn(ZoneType.Hand).containsAll(hand);
     }
 }

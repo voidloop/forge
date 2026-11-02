@@ -22,24 +22,15 @@ public final class BlockersDecision {
 
     void requireContext() {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Play || game.isGameOver()
-                || game.getCombat() != combat || combat.getAttackingPlayer() == player
-                || !game.getPhaseHandler().is(PhaseType.COMBAT_DECLARE_BLOCKERS, combat.getAttackingPlayer())) {
+        if (hasInvalidDeclarationContext()) {
             throw new IllegalArgumentException("Invalid native blocker declaration context");
         }
         // shortcut: ordinary vanilla duel only; extend combat costs/keywords after their own proof.
-        if (game.getRules().getGameType() != GameType.Constructed
-                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
-                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
-                || combat.getAttackingPlayer() != player.getOpponents().get(0)
-                || player.getDeclaresBlockers() != null || !game.getStack().isEmpty()
-                || !game.getCardsIn(ZoneType.Command).isEmpty()
-                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
-                || combat.getDefenders().size() != 1 || combat.getDefenders().get(0) != player) {
+        if (isOutsideDeclarationScope()) {
             throw new UnsupportedOperationException("Ordinary blocker declaration scope");
         }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isFaceDown() || !card.getView().canBeShownTo(player.getView())) {
+            if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Blocker declaration visibility");
             }
             if (card.isBasicLand()) { PriorityDecision.requireBasicLand(card); }
@@ -52,9 +43,7 @@ public final class BlockersDecision {
         if (current.size() != attackers.size()) { throw new IllegalArgumentException("Attackers changed during decision"); }
         for (int i = 0; i < attackers.size(); i++) {
             Card card = attackers.get(i);
-            if (current.get(i) != card || player.getGame().getCardState(card, null) != card
-                    || card.getController() != combat.getAttackingPlayer() || !card.isInZone(ZoneType.Battlefield)
-                    || combat.getDefenderByAttacker(card) != player) {
+            if (isStaleAttacker(card, current.get(i))) {
                 throw new IllegalArgumentException("Stale or unbound attacking configuration");
             }
         }
@@ -64,7 +53,7 @@ public final class BlockersDecision {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
-        if (defender != player || !combat.getAllBlockers().isEmpty() || combat.getAttackers().isEmpty()) {
+        if (hasUnboundDeclaration(defender)) {
             throw new IllegalArgumentException("Unbound or nonempty blocker declaration");
         }
         attackers = List.copyOf(combat.getAttackers());
@@ -91,20 +80,18 @@ public final class BlockersDecision {
     }
 
     void validate(List<Integer> answer) {
-        if (answer == null || answer.size() % 2 != 0
-                || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))) {
+        if (hasInvalidPairEncoding(answer)) {
             throw new IllegalArgumentException("Invalid blocker/attacker pairs");
         }
         var chosen = new HashSet<Card>();
         for (int i = 0; i < answer.size(); i += 2) {
             int b = answer.get(i), a = answer.get(i + 1);
-            if (b < 0 || b >= blockers.size() || a < 0 || a >= attackers.size()) {
+            if (isOutsidePairBindings(b, a)) {
                 throw new IllegalArgumentException("Invalid blocker/attacker index");
             }
             Card card = blockers.get(b);
-            if (!chosen.add(card) || player.getGame().getCardState(card, null) != card
-                    || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
-                    || !CombatUtil.canBlock(attackers.get(a), card)) {
+            boolean firstBlock = chosen.add(card);
+            if (isIllegalBlocker(card, a, firstBlock)) {
                 throw new IllegalArgumentException("Duplicate, stale or illegal blocker");
             }
         }
@@ -115,4 +102,51 @@ public final class BlockersDecision {
         if (error != null) { throw new IllegalArgumentException("Native block declaration invalid: " + error); }
     }
 
+    private boolean hasInvalidDeclarationContext() {
+        var game = player.getGame();
+        return game.getAge() != GameStage.Play || game.isGameOver()
+                || game.getCombat() != combat || combat.getAttackingPlayer() == player
+                || !game.getPhaseHandler().is(PhaseType.COMBAT_DECLARE_BLOCKERS, combat.getAttackingPlayer());
+    }
+
+    private boolean isOutsideDeclarationScope() {
+        var game = player.getGame();
+        return game.getRules().getGameType() != GameType.Constructed
+                || Arrays.stream(GameType.values()).anyMatch(game.getRules()::hasAppliedVariant)
+                || game.getPlayers().size() != 2 || player.getOpponents().size() != 1
+                || combat.getAttackingPlayer() != player.getOpponents().get(0)
+                || player.getDeclaresBlockers() != null || !game.getStack().isEmpty()
+                || !game.getCardsIn(ZoneType.Command).isEmpty()
+                || !game.getTriggerHandler().getDelayedTriggers().isEmpty()
+                || combat.getDefenders().size() != 1 || combat.getDefenders().get(0) != player;
+    }
+
+    private boolean isHiddenCard(Card card) {
+        return card.isFaceDown() || !card.getView().canBeShownTo(player.getView());
+    }
+
+    private static boolean hasInvalidPairEncoding(List<Integer> answer) {
+        return answer == null || answer.size() % 2 != 0
+                || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer));
+    }
+
+    private boolean isStaleAttacker(Card card, Card current) {
+        return current != card || player.getGame().getCardState(card, null) != card
+                || card.getController() != combat.getAttackingPlayer() || !card.isInZone(ZoneType.Battlefield)
+                || combat.getDefenderByAttacker(card) != player;
+    }
+
+    private boolean hasUnboundDeclaration(Player defender) {
+        return defender != player || !combat.getAllBlockers().isEmpty() || combat.getAttackers().isEmpty();
+    }
+
+    private boolean isOutsidePairBindings(int b, int a) {
+        return b < 0 || b >= blockers.size() || a < 0 || a >= attackers.size();
+    }
+
+    private boolean isIllegalBlocker(Card card, int a, boolean firstBlock) {
+        return !firstBlock || player.getGame().getCardState(card, null) != card
+                || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
+                || !CombatUtil.canBlock(attackers.get(a), card);
+    }
 }

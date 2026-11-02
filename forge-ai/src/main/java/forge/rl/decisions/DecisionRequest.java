@@ -24,12 +24,11 @@ public final class DecisionRequest<T extends GameEntity> {
     public DecisionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
             boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
-        if (reveal != null || params != null && !params.isEmpty()) {
+        if (hasUnsupportedMetadata(reveal, params)) {
             throw new UnsupportedOperationException("selection reveal/parameters");
         }
         if (min < 0 || max < min) { throw new UnsupportedOperationException("selection bounds"); }
-        if (related != null && (related.getGame() != observer.getGame()
-                || !observer.getGame().getPlayers().contains(related))) {
+        if (hasForeignRelatedPlayer(observer, related)) {
             throw new UnsupportedOperationException("selection related player");
         }
         bindings = new ArrayList<>();
@@ -37,13 +36,12 @@ public final class DecisionRequest<T extends GameEntity> {
         for (T entity : options) {
             if (entity instanceof Card card) {
                 // shortcut: visible face-up cards only; add reveals/face-down choices after their own proof.
-                if (card.getGame() != observer.getGame() || card.getZone() == null || card.isFaceDown()
-                        || !card.getView().canBeShownTo(observer.getView())) {
+                if (isHiddenOrUnboundCard(card, observer)) {
                     throw new UnsupportedOperationException("selection of hidden or unbound card");
                 }
                 descriptions.add(Map.of("type", "card", "name", card.getName(),
                         "zone", card.getZone().getZoneType().name()));
-            } else if (entity instanceof Player candidate && candidate.getGame() == observer.getGame() && observer.getGame().getPlayers().contains(candidate)) {
+            } else if (entity instanceof Player candidate && isBoundPlayer(candidate, observer)) {
                 descriptions.add(Map.of("type", "player", "name", candidate.getName()));
             } else { throw new UnsupportedOperationException("selection entity"); }
             bindings.add(entity);
@@ -74,10 +72,32 @@ public final class DecisionRequest<T extends GameEntity> {
         for (Object value : selected) {
             if (!(value instanceof Integer)) { throw new IllegalArgumentException("Selection must contain integers"); }
         }
-        if (selected.size() > upper || selected.size() < lower && !(optional && selected.isEmpty())
-                || new HashSet<>(selected).size() != selected.size()
-                || selected.stream().anyMatch(index -> index < 0 || index >= bindings.size())) {
+        if (hasInvalidSelection(selected)) {
             throw new IllegalArgumentException("Invalid selection response");
         }
+    }
+
+    private static boolean hasUnsupportedMetadata(DelayedReveal reveal, Map<String, Object> params) {
+        return reveal != null || params != null && !params.isEmpty();
+    }
+
+    private static boolean hasForeignRelatedPlayer(Player observer, Player related) {
+        return related != null && (related.getGame() != observer.getGame()
+                || !observer.getGame().getPlayers().contains(related));
+    }
+
+    private static boolean isHiddenOrUnboundCard(Card card, Player observer) {
+        return card.getGame() != observer.getGame() || card.getZone() == null || card.isFaceDown()
+                || !card.getView().canBeShownTo(observer.getView());
+    }
+
+    private static boolean isBoundPlayer(Player candidate, Player observer) {
+        return candidate.getGame() == observer.getGame() && observer.getGame().getPlayers().contains(candidate);
+    }
+
+    private boolean hasInvalidSelection(List<Integer> selected) {
+        return selected.size() > upper || selected.size() < lower && !(optional && selected.isEmpty())
+                || new HashSet<>(selected).size() != selected.size()
+                || selected.stream().anyMatch(index -> index < 0 || index >= bindings.size());
     }
 }

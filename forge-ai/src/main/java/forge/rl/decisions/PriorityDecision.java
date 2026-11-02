@@ -1,6 +1,8 @@
 package forge.rl.decisions;
 
 import forge.rl.StateReader;
+import forge.game.keyword.KeywordInterface;
+import forge.game.Game;
 import forge.card.mana.ManaCostShard;
 import forge.game.GameStage;
 import forge.game.GameEntity;
@@ -42,8 +44,7 @@ public final class PriorityDecision {
         }
         // shortcut: passive Lyra traits only in priority/payment; prove other effects and combat separately.
         for (var keyword : card.getKeywords()) {
-            if (!(keyword.getKeyword() == Keyword.FLYING || keyword.getKeyword() == Keyword.FIRST_STRIKE
-                    || keyword.getKeyword() == Keyword.LIFELINK)) {
+            if (hasUnsupportedCreatureKeyword(keyword)) {
                 throw new UnsupportedOperationException("Ordinary priority creature keyword");
             }
         }
@@ -63,18 +64,11 @@ public final class PriorityDecision {
                 && !sa.hasParam("TargetingPlayer") && !sa.getTargetRestrictions().isRandomTarget()
                 && sa.getTargetRestrictions().getZone().equals(List.of(ZoneType.Battlefield))
                 && sa.getParamOrDefault("NumDmg", "").matches("[1-9][0-9]*");
-        if (!sa.isSpell() || !(creature || damage) || sa.getSubAbility() != null
-                || sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
-                || sa.getPayCosts().isMandatory() || !sa.getPayCosts().isOnlyManaCost()
-                || !sa.getPayCosts().getTotalMana().equals(card.getManaCost())
-                || card.getManaCost().isNoCost() || card.getManaCost().countX() != 0
-                || sa.isCopied() || sa.isOffering() || sa.isEmerge() || sa.getMayPlayOption() != null
-                || sa.hasParam("Announce") || sa.hasParam("AnnounceType") || sa.hasParam("ManaConversion")) {
+        if (hasUnsupportedSpellShape(card, sa, creature, damage)) {
             throw new UnsupportedOperationException("Ordinary priority spell shape");
         }
         for (ManaCostShard shard : card.getManaCost()) {
-            if (!(shard == ManaCostShard.WHITE || shard == ManaCostShard.BLUE || shard == ManaCostShard.BLACK
-                    || shard == ManaCostShard.RED || shard == ManaCostShard.GREEN)) {
+            if (isUnsupportedManaShard(shard)) {
                 throw new UnsupportedOperationException("Ordinary priority mana cost");
             }
         }
@@ -87,39 +81,31 @@ public final class PriorityDecision {
     }
 
     static void requireBasicLand(Card card) {
-        if (!card.isBasicLand() || card.isSnow() || !card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
-                || !card.getStaticAbilities().isEmpty() || !card.getReplacementEffects().isEmpty()) {
+        if (isOutsideBasicLandScope(card)) {
             throw new UnsupportedOperationException("Ordinary priority basic land");
         }
         var mana = card.getSpellAbilities().stream().filter(sa -> !sa.isLandAbility()).toList();
         if (mana.size() != 1) { throw new UnsupportedOperationException("Ordinary basic-land variants"); }
         SpellAbility sa = mana.get(0);
-        if (sa.getApi() != ApiType.Mana || !sa.isActivatedAbility() || !sa.isManaAbility()
-                || sa.getSubAbility() != null || sa.getManaPart() == null
-                || !sa.getParamOrDefault("Produced", "").matches("[WUBRG]")
-                || !sa.getParamOrDefault("Amount", "1").equals("1")
-                || sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
-                || !(sa.getPayCosts().getCostParts().get(0) instanceof CostTap)
-                || !sa.getManaPart().getManaRestrictions().isEmpty()
-                || !sa.getManaPart().getExtraManaRestriction().isEmpty()) {
+        if (hasUnsupportedBasicManaShape(sa)) {
             throw new UnsupportedOperationException("Ordinary basic-land mana shape");
         }
     }
 
     private static void requireContext(Player player) {
         var game = player.getGame();
-        if (game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player) {
+        if (hasNoLivePriority(game, player)) {
             throw new IllegalStateException("Player does not have live priority");
         }
         // shortcut: basic lands, passive Lyra traits, automatic ETB and fixed damage; extend with later families.
-        if (!game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty()) {
+        if (hasPendingPriorityState(game)) {
             throw new UnsupportedOperationException("Ordinary priority pending context");
         }
         List<Card> visible = new ArrayList<>(game.getCardsIn(ZoneType.Battlefield));
         visible.addAll(player.getCardsIn(ZoneType.Hand));
         visible.addAll(game.getCardsIn(ZoneType.Stack));
         for (Card card : visible) {
-            if (card.isFaceDown() || !card.getView().canBeShownTo(player.getView())) {
+            if (isHiddenCard(card, player)) {
                 throw new UnsupportedOperationException("Ordinary priority visibility");
             }
             if (card.isBasicLand()) { requireBasicLand(card); }
@@ -162,8 +148,7 @@ public final class PriorityDecision {
                 if (!playable) { continue; }
                 String type = sa.isLandAbility() ? "play_land" : sa.isManaAbility() ? "activate_mana" : "cast_spell";
                 int variant = card.getSpellAbilities().indexOf(sa);
-                if (targets != null && targets.stream().anyMatch(target -> !(target instanceof Player)
-                        && !(target instanceof Card c && c.isCreature()))) {
+                if (hasUnsupportedTargetDomain(targets)) {
                     throw new UnsupportedOperationException("Ordinary priority target domain");
                 }
                 bindings.add(new Choice(sa, card, type, variant, targets));
@@ -181,8 +166,7 @@ public final class PriorityDecision {
     }
 
     Choice validate(List<Integer> answer) {
-        if (answer == null || answer.isEmpty() || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))
-                || answer.get(0) < 0 || answer.get(0) > bindings.size()) {
+        if (hasInvalidAnswerHeader(answer)) {
             throw new IllegalArgumentException("Invalid priority answer");
         }
         if (answer.get(0) == 0) {
@@ -190,8 +174,7 @@ public final class PriorityDecision {
             return null;
         }
         Choice choice = bindings.get(answer.get(0) - 1);
-        if (answer.size() != (choice.targets == null ? 1 : 2)
-                || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size())) {
+        if (hasInvalidTargetAnswer(answer, choice)) {
             throw new IllegalArgumentException("Invalid priority target answer");
         }
         return choice;
@@ -233,9 +216,7 @@ public final class PriorityDecision {
 
         public void before(Player player, SpellAbility selected) {
             requireContext(player);
-            if (selected != ability || ability.getHostCard() != card
-                    || player.getGame().getCardState(card, null) != card || !ability.canPlay()
-                    || card.getSpellAbilities().get(variant) != ability) {
+            if (isStaleOrUnboundAction(player, selected)) {
                 throw new IllegalArgumentException("Stale or unbound priority action");
             }
             landsPlayed = player.getLandsPlayedThisTurn();
@@ -244,26 +225,44 @@ public final class PriorityDecision {
         }
 
         public void after(Player player, boolean reported) {
-            if (targets != null && stack(player).stream().anyMatch(sa -> sa == ability)
-                    && (targetIndex < 0 || ability.getTargets().size() != 1
-                    || ability.getTargets().get(0) != targets.get(targetIndex))) {
+            if (hasChangedBoundTarget(player)) {
                 throw new IllegalStateException("Native execution changed the bound final target");
             }
             Card current = player.getGame().getCardState(card, null);
-            if (type.equals("play_land") && (!reported || current == null || !current.isInZone(ZoneType.Battlefield)
-                    || current.getController() != player || player.getLandsPlayedThisTurn() != landsPlayed + 1)) {
+            if (hasIncompleteLandExecution(player, reported, current)) {
                 throw new IllegalStateException("Native land execution did not complete");
             }
             boolean produced = false;
             for (var mana : player.getManaPool()) {
                 if (mana.getManaAbility() == ability.getManaPart() && mana.getSourceCard().getId() == card.getId()) { produced = true; }
             }
-            if (isMana() && (!reported || current != card || !card.isTapped()
-                    || player.getManaPool().totalMana() != manaBefore + 1
-                    || !stack(player).equals(stackBefore)
-                    || !produced)) {
+            if (hasIncompleteManaExecution(player, reported, current, produced)) {
                 throw new IllegalStateException("Native basic-land activation did not complete");
             }
+        }
+
+        private boolean isStaleOrUnboundAction(Player player, SpellAbility selected) {
+            return selected != ability || ability.getHostCard() != card
+                    || player.getGame().getCardState(card, null) != card || !ability.canPlay()
+                    || card.getSpellAbilities().get(variant) != ability;
+        }
+
+        private boolean hasChangedBoundTarget(Player player) {
+            return targets != null && stack(player).stream().anyMatch(sa -> sa == ability)
+                    && (targetIndex < 0 || ability.getTargets().size() != 1
+                    || ability.getTargets().get(0) != targets.get(targetIndex));
+        }
+
+        private boolean hasIncompleteLandExecution(Player player, boolean reported, Card current) {
+            return type.equals("play_land") && (!reported || current == null || !current.isInZone(ZoneType.Battlefield)
+                    || current.getController() != player || player.getLandsPlayedThisTurn() != landsPlayed + 1);
+        }
+
+        private boolean hasIncompleteManaExecution(Player player, boolean reported, Card current, boolean produced) {
+            return isMana() && (!reported || current != card || !card.isTapped()
+                    || player.getManaPool().totalMana() != manaBefore + 1
+                    || !stack(player).equals(stackBefore)
+                    || !produced);
         }
 
         public Map<String, Object> result(Player player, StateReader view, boolean reported) {
@@ -272,5 +271,80 @@ public final class PriorityDecision {
                     "source", view.reference(ability.getHostCard()), "ability", variant,
                     "reported", reported, "onStack", onStack));
         }
+    }
+
+    private static boolean hasUnsupportedCreatureKeyword(KeywordInterface keyword) {
+        return !(keyword.getKeyword() == Keyword.FLYING || keyword.getKeyword() == Keyword.FIRST_STRIKE
+                || keyword.getKeyword() == Keyword.LIFELINK);
+    }
+
+    private static boolean hasUnsupportedSpellShape(Card card, SpellAbility sa, boolean creature, boolean damage) {
+        return !sa.isSpell() || !(creature || damage) || sa.getSubAbility() != null
+                || hasUnsupportedFixedCost(card, sa)
+                || hasAlternateCasting(sa)
+                || hasUnsupportedAnnouncements(sa);
+    }
+
+    private static boolean hasUnsupportedFixedCost(Card card, SpellAbility sa) {
+        return sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
+                || sa.getPayCosts().isMandatory() || !sa.getPayCosts().isOnlyManaCost()
+                || !sa.getPayCosts().getTotalMana().equals(card.getManaCost())
+                || card.getManaCost().isNoCost() || card.getManaCost().countX() != 0;
+    }
+
+    private static boolean hasAlternateCasting(SpellAbility sa) {
+        return sa.isCopied() || sa.isOffering() || sa.isEmerge() || sa.getMayPlayOption() != null;
+    }
+
+    private static boolean hasUnsupportedAnnouncements(SpellAbility sa) {
+        return sa.hasParam("Announce") || sa.hasParam("AnnounceType") || sa.hasParam("ManaConversion");
+    }
+
+    private static boolean isUnsupportedManaShard(ManaCostShard shard) {
+        return !(shard == ManaCostShard.WHITE || shard == ManaCostShard.BLUE || shard == ManaCostShard.BLACK
+                || shard == ManaCostShard.RED || shard == ManaCostShard.GREEN);
+    }
+
+    private static boolean isOutsideBasicLandScope(Card card) {
+        return !card.isBasicLand() || card.isSnow() || !card.getKeywords().isEmpty() || !card.getTriggers().isEmpty()
+                || !card.getStaticAbilities().isEmpty() || !card.getReplacementEffects().isEmpty();
+    }
+
+    private static boolean hasUnsupportedBasicManaShape(SpellAbility sa) {
+        return sa.getApi() != ApiType.Mana || !sa.isActivatedAbility() || !sa.isManaAbility()
+                || sa.getSubAbility() != null || sa.getManaPart() == null
+                || !sa.getParamOrDefault("Produced", "").matches("[WUBRG]")
+                || !sa.getParamOrDefault("Amount", "1").equals("1")
+                || sa.getPayCosts() == null || sa.getPayCosts().getCostParts().size() != 1
+                || !(sa.getPayCosts().getCostParts().get(0) instanceof CostTap)
+                || !sa.getManaPart().getManaRestrictions().isEmpty()
+                || !sa.getManaPart().getExtraManaRestriction().isEmpty();
+    }
+
+    private static boolean hasNoLivePriority(Game game, Player player) {
+        return game.getAge() != GameStage.Play || game.isGameOver() || game.getPhaseHandler().getPriorityPlayer() != player;
+    }
+
+    private static boolean hasPendingPriorityState(Game game) {
+        return !game.getCardsIn(ZoneType.Command).isEmpty() || !game.getTriggerHandler().getDelayedTriggers().isEmpty();
+    }
+
+    private static boolean isHiddenCard(Card card, Player player) {
+        return card.isFaceDown() || !card.getView().canBeShownTo(player.getView());
+    }
+
+    private static boolean hasUnsupportedTargetDomain(List<GameEntity> targets) {
+        return targets != null && targets.stream().anyMatch(target -> !(target instanceof Player)
+                && !(target instanceof Card c && c.isCreature()));
+    }
+
+    private boolean hasInvalidAnswerHeader(List<Integer> answer) {
+        return answer == null || answer.isEmpty() || ((List<?>) answer).stream().anyMatch(value -> !(value instanceof Integer))
+                || answer.get(0) < 0 || answer.get(0) > bindings.size();
+    }
+
+    private static boolean hasInvalidTargetAnswer(List<Integer> answer, Choice choice) {
+        return answer.size() != (choice.targets == null ? 1 : 2)
+                || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size());
     }
 }
