@@ -5,8 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public record CombatDamageRecorder() implements DecisionRecorder<CombatDamageRequest, Map<Card, Integer>> {
-    @Override public List<Integer> encode(CombatDamageRequest request, Map<Card, Integer> chosen) {
+public record CombatDamageRecorder() implements DecisionRecorder<CombatDamageQuestion, Map<Card, Integer>> {
+    @Override public List<Integer> encode(CombatDamageQuestion request, Map<Card, Integer> chosen) {
         if (chosen == null) { throw new UnsupportedOperationException("Deferred combat damage outside vanilla scope"); }
         var answer = new ArrayList<Integer>();
         for (var entry : chosen.entrySet()) {
@@ -22,7 +22,7 @@ public record CombatDamageRecorder() implements DecisionRecorder<CombatDamageReq
         return List.copyOf(answer);
     }
 
-    private boolean isBoundDamageEntry(CombatDamageRequest request, Map.Entry<Card, Integer> entry, int index) {
+    private boolean isBoundDamageEntry(CombatDamageQuestion request, Map.Entry<Card, Integer> entry, int index) {
         return index >= 0 && request.targets.get(index) == entry.getKey() && entry.getValue() != null;
     }
 }

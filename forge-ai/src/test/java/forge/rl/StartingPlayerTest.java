@@ -17,7 +17,7 @@ import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
 import forge.rl.decisions.DecisionExecutor;
 import forge.rl.decisions.DecisionRecorder;
-import forge.rl.decisions.StartingPlayerRequest;
+import forge.rl.decisions.StartingPlayerQuestion;
 import forge.rl.decisions.StartingPlayerExecutor;
 import forge.rl.decisions.StartingPlayerRecorder;
 import forge.util.MyRandom;
@@ -104,7 +104,7 @@ public class StartingPlayerTest {
                 @Override public List<Integer> choose(Map<String, Object> request) {
                     calls[0]++;
                     assertEquals(observed[0], 2, "Waiting controller must observe before the decision");
-                    var options = (Map<?, ?>) request.get("options");
+                    var options = (Map<?, ?>) request.get("question");
                     assertEquals(options.get("kind"), "starting_player");
                     assertEquals(options.get("isFirstGame"), true);
                     var state = (Map<?, ?>) request.get("state");
@@ -185,7 +185,7 @@ public class StartingPlayerTest {
                     assertEquals(MyRandom.getRandom().nextLong(), randomAfter);
                     assertEquals(snapshot(teacher, actor), before);
                     assertEquals(recording.request.get("state"), before);
-                    assertEquals(((Map<?, ?>) recording.request.get("options")).get("isFirstGame"), firstGame);
+                    assertEquals(((Map<?, ?>) recording.request.get("question")).get("isFirstGame"), firstGame);
                     assertEquals(recording.beforeCalls, 1);
                     assertEquals(recording.afterCalls, 1);
                     assertEquals(recording.answer, List.of(actor));
@@ -308,11 +308,11 @@ public class StartingPlayerTest {
         var teacherView = new StateReader(teacher.getRegisteredPlayers().get(0), 0L);
         var replayView = new StateReader(replay.getRegisteredPlayers().get(0), 0L);
         try {
-            var recorded = new StartingPlayerRequest(teacher.getRegisteredPlayers().get(0), teacherView, true);
-            var current = new StartingPlayerRequest(replay.getRegisteredPlayers().get(0), replayView, true);
+            var recorded = new StartingPlayerQuestion(teacher.getRegisteredPlayers().get(0), teacherView, true);
+            var current = new StartingPlayerQuestion(replay.getRegisteredPlayers().get(0), replayView, true);
             Player original = teacher.getPlayers().get(1);
             Player replacement = replay.getPlayers().get(1);
-            DecisionRecorder<StartingPlayerRequest, Player> recorder = new StartingPlayerRecorder()::encode;
+            DecisionRecorder<StartingPlayerQuestion, Player> recorder = new StartingPlayerRecorder()::encode;
             List<Integer> answer = recorder.encode(recorded, original);
             assertEquals(answer, List.of(1));
             assertThrows(UnsupportedOperationException.class, () -> answer.add(0));
@@ -373,7 +373,7 @@ public class StartingPlayerTest {
         Game game = fixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording));
         assertThrows(IllegalStateException.class, () -> game.getAction().startGame(null));
         assertNotNull(recording.pending);
-        assertEquals(((Map<?, ?>) recording.pending.get("options")).get("isFirstGame"), true);
+        assertEquals(((Map<?, ?>) recording.pending.get("question")).get("isFirstGame"), true);
         assertNull(recording.answer);
         assertEquals(recording.beforeCalls, 1);
         assertNull(game.getStartingPlayer());

@@ -2,7 +2,7 @@ package forge.rl.decisions;
 
 import java.util.List;
 
-public record TriggerExecutor(TriggerRequest request, List<Integer> answer) implements DecisionExecutor<Void> {
+public record TriggerExecutor(TriggerQuestion request, List<Integer> answer) implements DecisionExecutor<Void> {
     @Override public Void apply() {
         if (!request.isPermutation(answer)) { throw new IllegalArgumentException("Mandatory ETB preparation answer"); }
         request.requireLiveSources();
@@ -15,6 +15,6 @@ public record TriggerExecutor(TriggerRequest request, List<Integer> answer) impl
     }
 
     private boolean hasStaleStack() {
-        return !TriggerRequest.sameAbilities(TriggerRequest.stack(request.player), request.stackBefore);
+        return !TriggerQuestion.sameAbilities(TriggerQuestion.stack(request.player), request.stackBefore);
     }
 }

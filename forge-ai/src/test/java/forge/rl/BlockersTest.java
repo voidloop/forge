@@ -10,7 +10,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.BlockersRequest;
+import forge.rl.decisions.BlockersQuestion;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventBlockersDeclared;
@@ -155,7 +155,7 @@ public class BlockersTest {
             assertEquals(run(teacher), expected, "Teacher changed combat facts or RNG");
             assertNull(recording.pending);
             assertEquals(recording.answers.get(2), expected.pairs());
-            Map<?, ?> options = (Map<?, ?>) recording.requests.get(2).get("options");
+            Map<?, ?> options = (Map<?, ?>) recording.requests.get(2).get("question");
             assertEquals(options.get("kind"), "declare_blockers");
             assertEquals(((List<?>) options.get("items")).size(), scenario == 0 ? 1 : 3);
             int[] position = {0};
@@ -177,7 +177,7 @@ public class BlockersTest {
     @Test public void nativeLoopSkipsQuestionWhenNoCreatureCanBlock() {
         var kinds = new ArrayList<Object>();
         IPlayerDecisionCallback callback = request -> {
-            kinds.add(((Map<?, ?>) request.get("options")).get("kind")); return List.of(0);
+            kinds.add(((Map<?, ?>) request.get("question")).get("kind")); return List.of(0);
         };
         var f = fixture(new LobbyPlayerRl("first", callback), new LobbyPlayerRl("second", callback), 1);
         f.blockers().forEach(c -> c.setTapped(true));
@@ -230,7 +230,7 @@ public class BlockersTest {
             direct(f);
             StateReader view = new StateReader(f.defender(), 0L);
             try {
-                var request = new BlockersRequest(f.defender(), view, f.defender(), f.game().getCombat());
+                var request = new BlockersQuestion(f.defender(), view, f.defender(), f.game().getCombat());
                 Card offered = attacker ? f.attackers().get(0) : f.blockers().get(0);
                 Card lki = CardCopyService.getLKICopy(offered);
                 assertNotSame(lki, offered); assertEquals(lki, offered);

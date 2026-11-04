@@ -14,14 +14,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One native selection: detached question and private, invocation-local bindings. */
-public final class SelectionRequest<T extends GameEntity> implements DecisionRequest {
+public final class SelectionQuestion<T extends GameEntity> implements DecisionRequest {
     public final Map<String, Object> data;
     final List<T> bindings;
     private final int lower;
     private final int upper;
     private final boolean optional;
 
-    public SelectionRequest(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
+    public SelectionQuestion(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
             boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
         if (hasUnsupportedMetadata(reveal, params)) {
@@ -64,7 +64,7 @@ public final class SelectionRequest<T extends GameEntity> implements DecisionReq
         Map<String, Object> decision = StateReader.data("kind", kind, "prompt", Objects.toString(title, ""),
                 "items", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
                 "relatedPlayer", related == null ? null : view.reference(related));
-        data = Map.of("state", facts, "options", decision);
+        data = Map.of("state", facts, "question", decision);
     }
 
     @Override public Map<String, Object> data() { return data; }

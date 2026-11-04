@@ -14,7 +14,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final attacker/defender assignments, bound before the native void decision. */
-public final class AttackersRequest implements DecisionRequest {
+public final class AttackersQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -34,12 +34,12 @@ public final class AttackersRequest implements DecisionRequest {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Attacker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
-            else { PriorityRequest.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
+            else { PriorityQuestion.requireCreature(card); }
         }
     }
 
-    public AttackersRequest(Player player, StateReader view, Player attacker, Combat combat) {
+    public AttackersQuestion(Player player, StateReader view, Player attacker, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
@@ -61,7 +61,7 @@ public final class AttackersRequest implements DecisionRequest {
             }
             items.add(Map.of("key", view.reference(card), "name", card.getName(), "defenders", List.copyOf(legal)));
         }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "declare_attackers",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_attackers",
                 "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
                 "defenders", defenders.stream().map(d -> Map.of("key", view.reference(d), "name", d.getName())).toList()));
     }

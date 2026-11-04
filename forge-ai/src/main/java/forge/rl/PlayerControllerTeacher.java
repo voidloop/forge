@@ -1,19 +1,19 @@
 package forge.rl;
 
-import forge.rl.decisions.PriorityRequest;
-import forge.rl.decisions.AttackersRequest;
-import forge.rl.decisions.BlockersRequest;
-import forge.rl.decisions.CombatDamageRequest;
-import forge.rl.decisions.CombatGraveyardRequest;
-import forge.rl.decisions.CleanupRequests;
-import forge.rl.decisions.SelectionRequest;
-import forge.rl.decisions.ConfirmActionRequest;
+import forge.rl.decisions.PriorityQuestion;
+import forge.rl.decisions.AttackersQuestion;
+import forge.rl.decisions.BlockersQuestion;
+import forge.rl.decisions.CombatDamageQuestion;
+import forge.rl.decisions.CombatGraveyardQuestion;
+import forge.rl.decisions.CleanupQuestions;
+import forge.rl.decisions.SelectionQuestion;
+import forge.rl.decisions.ConfirmActionQuestion;
 import forge.rl.decisions.ConfirmActionRecorder;
-import forge.rl.decisions.ManaRequest;
-import forge.rl.decisions.ManaPaymentRequest;
-import forge.rl.decisions.MulliganRequests;
-import forge.rl.decisions.StartingPlayerRequest;
-import forge.rl.decisions.TriggerRequest;
+import forge.rl.decisions.ManaQuestion;
+import forge.rl.decisions.ManaPaymentQuestion;
+import forge.rl.decisions.MulliganQuestions;
+import forge.rl.decisions.StartingPlayerQuestion;
+import forge.rl.decisions.TriggerQuestion;
 import forge.rl.decisions.StartingPlayerRecorder;
 import forge.rl.decisions.DecisionRecorder;
 import forge.rl.decisions.DecisionRequest;
@@ -61,12 +61,12 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private boolean observationStarted;
     private boolean observationClosed;
     private RuntimeException failure;
-    private PriorityRequest.Choice pendingPriority;
-    private PriorityRequest.Choice activePriority;
-    private ManaRequest.Choice pendingMana;
-    private ManaRequest.Choice activeMana;
-    private ManaPaymentRequest payment;
-    private TriggerRequest activeTrigger;
+    private PriorityQuestion.Choice pendingPriority;
+    private PriorityQuestion.Choice activePriority;
+    private ManaQuestion.Choice pendingMana;
+    private ManaQuestion.Choice activeMana;
+    private ManaPaymentQuestion payment;
+    private TriggerQuestion activeTrigger;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
@@ -98,21 +98,21 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
         return withStartupDecision("starting_player", () -> record(
-                () -> new StartingPlayerRequest(player, observation, isFirstGame),
+                () -> new StartingPlayerQuestion(player, observation, isFirstGame),
                 () -> super.chooseStartingPlayer(isFirstGame),
                 new StartingPlayerRecorder()));
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
         return withStartupDecision("mulligan_keep", () -> record(
-                () -> MulliganRequests.keep(player, observation, first, cardsToReturn),
+                () -> MulliganQuestions.keep(player, observation, first, cardsToReturn),
                 () -> super.mulliganKeepHand(first, cardsToReturn),
                 new MulliganKeepRecorder()));
     }
 
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
         return withStartupDecision("mulligan_tuck", () -> record(
-                () -> MulliganRequests.tuck(player, observation, hand, cardsToReturn),
+                () -> MulliganQuestions.tuck(player, observation, hand, cardsToReturn),
                 () -> super.tuckCardsViaMulligan(hand, cardsToReturn), new SelectionRecorder<Card>()::encode,
                 cardsToReturn != 0));
     }
@@ -180,8 +180,8 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private <A> A withRestoredContext(Supplier<A> operation) {
         String previousKind = activeKind;
         SpellAbility previousAbility = activeAbility;
-        ManaPaymentRequest previousPayment = payment;
-        TriggerRequest previousTrigger = activeTrigger;
+        ManaPaymentQuestion previousPayment = payment;
+        TriggerQuestion previousTrigger = activeTrigger;
         try { return operation.get(); }
         finally {
             activeKind = previousKind;
@@ -267,36 +267,36 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        return withAbilityDecision(sa, "confirm", () -> new ConfirmActionRequest(player, observation, sa, mode, message,
+        return withAbilityDecision(sa, "confirm", () -> new ConfirmActionQuestion(player, observation, sa, mode, message,
                 options, cardToShow, params),
                 () -> super.confirmAction(sa, mode, message, options, cardToShow, params), new ConfirmActionRecorder());
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return withAbilityDecision(null, "discard_cleanup", () -> CleanupRequests.create(player, observation, numDiscard),
+        return withAbilityDecision(null, "discard_cleanup", () -> CleanupQuestions.create(player, observation, numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public void declareAttackers(Player attacker, Combat combat) {
-        withDecision("declare_attackers", () -> new AttackersRequest(player, observation, attacker, combat),
+        withDecision("declare_attackers", () -> new AttackersQuestion(player, observation, attacker, combat),
                 () -> { super.declareAttackers(attacker, combat); return null; }, new AttackersRecorder());
     }
 
     @Override public void declareBlockers(Player defender, Combat combat) {
-        withDecision("declare_blockers", () -> new BlockersRequest(player, observation, defender, combat),
+        withDecision("declare_blockers", () -> new BlockersQuestion(player, observation, defender, combat),
                 () -> { super.declareBlockers(defender, combat); return null; }, new BlockersRecorder());
     }
 
     @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
             int damage, GameEntity defender, boolean overrideOrder) {
         return withDecision("combat_damage",
-                () -> new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder),
+                () -> new CombatDamageQuestion(player, observation, source, targets, remaining, damage, defender, overrideOrder),
                 () -> super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder),
                 new CombatDamageRecorder());
     }
 
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
-        return withDecision("combat_graveyard_order", () -> new CombatGraveyardRequest(player, observation, cards, destinationZone, source),
+        return withDecision("combat_graveyard_order", () -> new CombatGraveyardQuestion(player, observation, cards, destinationZone, source),
                 () -> super.orderMoveToZoneList(cards, destinationZone, source), new CombatGraveyardRecorder());
     }
 
@@ -306,15 +306,15 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             try {
                 requireDecisionContext("priority");
                 startObservation();
-                if (ManaRequest.hasSource(player)) {
-                    return withDecision("priority_mana", () -> new ManaRequest(player, observation),
+                if (ManaQuestion.hasSource(player)) {
+                    return withDecision("priority_mana", () -> new ManaQuestion(player, observation),
                             () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
                                 List<Integer> answer = new ManaRecorder().encode(request, chosen);
                                 pendingMana = chosen == null ? null : request.selected();
                                 return answer;
                             });
                 }
-                return withDecision("priority", () -> new PriorityRequest(player, observation),
+                return withDecision("priority", () -> new PriorityQuestion(player, observation),
                         () -> super.chooseSpellAbilityToPlay(), (request, chosen) -> {
                             List<Integer> answer = new PriorityRecorder().encode(request, chosen);
                             pendingPriority = request.bindChoice(answer);
@@ -326,7 +326,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
         withDecision("trigger_prepare", () -> {
-            activeTrigger = new TriggerRequest(player, observation, abilities);
+            activeTrigger = new TriggerQuestion(player, observation, abilities);
             return activeTrigger;
         }, () -> { super.orderAndPlaySimultaneousSa(abilities); return null; }, new TriggerRecorder());
     }
@@ -348,7 +348,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         if (failure != null) { throw failure; }
         try {
             if (hasActiveDecision()) { throw new IllegalStateException("Nested teacher trigger resolution"); }
-            TriggerRequest.requireResolution(player, ability, setupTargets);
+            TriggerQuestion.requireResolution(player, ability, setupTargets);
             activeAbility = ability;
             activeKind = "trigger_resolution";
             super.playSpellAbilityNoStack(ability, setupTargets);
@@ -399,7 +399,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             catch (RuntimeException error) { failure = error; throw error; }
         }
         return withDecision("mana_payment", () -> {
-            payment = new ManaPaymentRequest(player, observation, cost, part, ability, matrix, effect);
+            payment = new ManaPaymentQuestion(player, observation, cost, part, ability, matrix, effect);
             return payment;
         }, () -> super.payManaCost(cost, part, ability, prompt, matrix, effect), new ManaPaymentRecorder());
     }
@@ -418,20 +418,20 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return withAbilityDecision(sa, "single_entity", () -> new SelectionRequest<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
+        return withAbilityDecision(sa, "single_entity", () -> new SelectionQuestion<>(player, observation, "single_entity", options, title, 1, 1, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params),
                 (request, answer) -> new SelectionRecorder<T>().encode(request, answer == null ? List.of() : List.of(answer)));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return withAbilityDecision(sa, "cards", () -> new SelectionRequest<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
+        return withAbilityDecision(sa, "cards", () -> new SelectionQuestion<>(player, observation, "cards", options, title, min, max, optional, null, null, params),
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params), new SelectionRecorder<Card>()::encode);
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return withAbilityDecision(sa, "entities", () -> new SelectionRequest<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
+        return withAbilityDecision(sa, "entities", () -> new SelectionQuestion<>(player, observation, "entities", options, title, min, max, min == 0, reveal, related, params),
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params), new SelectionRecorder<T>()::encode);
     }
 }

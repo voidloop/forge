@@ -11,8 +11,8 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerRequest;
-import forge.rl.decisions.PriorityRequest;
+import forge.rl.decisions.TriggerQuestion;
+import forge.rl.decisions.PriorityQuestion;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -129,7 +129,7 @@ public class HelpfulHunterTest {
         var view = new StateReader(f.player(), 0L);
         var trigger = f.spell().getHostCard().getTriggers().get(0);
         var originalAbility = trigger.getOverridingAbility();
-        new PriorityRequest(f.player(), view);
+        new PriorityQuestion(f.player(), view);
         assertSame(trigger.getOverridingAbility(), originalAbility);
         view.close();
         var probe = new Probe(f.player());
@@ -169,7 +169,7 @@ public class HelpfulHunterTest {
         opponent(teacher, recording);
         assertEquals(run(teacher), baseline, "Teacher changed native facts, payment, events or RNG");
         assertNull(recording.pending);
-        var kinds = recording.requests.stream().map(r -> ((Map<?, ?>) r.get("options")).get("kind")).toList();
+        var kinds = recording.requests.stream().map(r -> ((Map<?, ?>) r.get("question")).get("kind")).toList();
         assertEquals(kinds, List.of("priority", "mana_payment", "priority", "priority", "trigger_prepare", "priority", "priority", "priority"));
         assertEquals(recording.answers.get(4), List.of(0));
         assertNotNull(recording.execution);
@@ -234,7 +234,7 @@ public class HelpfulHunterTest {
         var wrapper = (WrappedAbility) f.game().getStack().peekAbility();
         f.game().getStack().clear();
         var view = new StateReader(f.player(), 0L);
-        var request = new TriggerRequest(f.player(), view, List.of(wrapper));
+        var request = new TriggerQuestion(f.player(), view, List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
         assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));

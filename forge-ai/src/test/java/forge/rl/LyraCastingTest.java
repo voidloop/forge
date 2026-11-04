@@ -157,7 +157,7 @@ public class LyraCastingTest {
     }
 
     private static List<Integer> cast(Map<String, Object> request) {
-        var items = (List<?>) ((Map<?, ?>) request.get("options")).get("items");
+        var items = (List<?>) ((Map<?, ?>) request.get("question")).get("items");
         for (int i = 1; i < items.size(); i++) {
             if ("cast_spell".equals(((Map<?, ?>) items.get(i)).get("type"))) { return List.of(i); }
         }
@@ -169,7 +169,7 @@ public class LyraCastingTest {
             List<Map<String, Object>> results = new ArrayList<>();
             var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
                 @Override public List<Integer> choose(Map<String, Object> request) {
-                    return "mana_payment".equals(((Map<?, ?>) request.get("options")).get("kind")) ? List.of(0, 0) : cast(request);
+                    return "mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind")) ? List.of(0, 0) : cast(request);
                 }
                 @Override public void executed(Map<String, Object> result) { results.add(result); }
             }));
@@ -178,7 +178,7 @@ public class LyraCastingTest {
             if (kind.equals("cancel")) {
                 assertFalse(controller.playChosenSpellAbility(spell));
                 assertEquals(results.size(), 1);
-                assertEquals(((Map<?, ?>) results.get(0).get("options")).get("onStack"), false);
+                assertEquals(((Map<?, ?>) results.get(0).get("question")).get("onStack"), false);
                 assertTrue(f.game().getCardState(spell.getHostCard()).isInZone(ZoneType.Hand));
             } else {
                 if (kind.equals("timing")) { f.game().getPhaseHandler().devModeSet(PhaseType.COMBAT_BEGIN, f.player(), false, 6); }

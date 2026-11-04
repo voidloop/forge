@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
-public final class ManaRequest implements DecisionRequest {
+public final class ManaQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     final Choice choice;
 
@@ -38,7 +38,7 @@ public final class ManaRequest implements DecisionRequest {
 
     public static boolean hasSource(Player player) {
         return player.getCardsIn(ZoneType.Battlefield).stream().filter(Card::isLand)
-                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaRequest::supported));
+                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaQuestion::supported));
     }
 
     private static SpellAbility requireContext(Player player) {
@@ -69,7 +69,7 @@ public final class ManaRequest implements DecisionRequest {
         return source;
     }
 
-    public ManaRequest(Player player, StateReader view) {
+    public ManaQuestion(Player player, StateReader view) {
         SpellAbility ability = requireContext(player);
         Player activator = ability.getActivatingPlayer();
         boolean playable;
@@ -83,7 +83,7 @@ public final class ManaRequest implements DecisionRequest {
             items.add(Map.of("type", "activate_mana", "name", choice.card.getName(),
                     "key", view.reference(choice.card)));
         }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "priority_mana",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority_mana",
                 "scope", "pass_or_single_tap_mana", "items", List.copyOf(items)));
     }
 
@@ -133,7 +133,7 @@ public final class ManaRequest implements DecisionRequest {
             }
             samePriority(player);
             if (offered.getColor() != colors().getColor()) { throw new UnsupportedOperationException("AI-restricted mana menu must not be exported"); }
-            return new ColorRequest(this, Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_color", "source", view.reference(card),
+            return new ColorRequest(this, Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_color", "source", view.reference(card),
                     "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList())));
         }
 

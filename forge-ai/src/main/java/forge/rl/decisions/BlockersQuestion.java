@@ -13,7 +13,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final blocker/attacker assignments, bound before the native void decision. */
-public final class BlockersRequest implements DecisionRequest {
+public final class BlockersQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -33,8 +33,8 @@ public final class BlockersRequest implements DecisionRequest {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Blocker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
-            else { PriorityRequest.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
+            else { PriorityQuestion.requireCreature(card); }
         }
     }
 
@@ -49,7 +49,7 @@ public final class BlockersRequest implements DecisionRequest {
         }
     }
 
-    public BlockersRequest(Player player, StateReader view, Player defender, Combat combat) {
+    public BlockersQuestion(Player player, StateReader view, Player defender, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
@@ -74,7 +74,7 @@ public final class BlockersRequest implements DecisionRequest {
                 items.add(Map.of("key", view.reference(card), "name", card.getName(), "attackers", List.copyOf(legal)));
             }
         }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "declare_blockers",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_blockers",
                 "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
                 "attackers", attackers.stream().map(a -> Map.of("key", view.reference(a), "name", a.getName())).toList()));
     }

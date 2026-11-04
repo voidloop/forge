@@ -2,8 +2,8 @@ package forge.rl.decisions;
 
 import java.util.List;
 
-public record ManaColorRecorder() implements DecisionRecorder<ManaRequest.ColorRequest, Byte> {
-    @Override public List<Integer> encode(ManaRequest.ColorRequest request, Byte chosen) {
+public record ManaColorRecorder() implements DecisionRecorder<ManaQuestion.ColorRequest, Byte> {
+    @Override public List<Integer> encode(ManaQuestion.ColorRequest request, Byte chosen) {
         var choice = request.choice();
         var options = choice.colors().stream().toList();
         for (int i = 0; i < options.size(); i++) {

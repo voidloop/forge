@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Order exact mandatory ETB wrappers; automatic effects and resolution stay in Forge. */
-public final class TriggerRequest implements DecisionRequest {
+public final class TriggerQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Binding> bindings;
@@ -91,7 +91,7 @@ public final class TriggerRequest implements DecisionRequest {
         return List.copyOf(result);
     }
 
-    public TriggerRequest(Player player, StateReader view, List<SpellAbility> abilities) {
+    public TriggerQuestion(Player player, StateReader view, List<SpellAbility> abilities) {
         this.player = player;
         // shortcut: one or two distinct ETB sources per controller; qualify repeated sources and larger batches separately.
         if (!isSupportedBatch(abilities)) {
@@ -104,7 +104,7 @@ public final class TriggerRequest implements DecisionRequest {
         requireLiveSources();
         stackBefore = stack(player);
         if (stackBefore.stream().anyMatch(this::isSource)) { throw new IllegalArgumentException("Trigger already on stack"); }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "trigger_prepare",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "trigger_prepare",
                 "scope", isLegacySingleDraw() ? "single_self_etb_draw" : "mandatory_etb", "mandatory", true,
                 "items", bindings.stream().map(binding -> Map.of("key", view.reference(binding.host()), "trigger", 0)).toList()));
     }
@@ -115,7 +115,7 @@ public final class TriggerRequest implements DecisionRequest {
     }
 
     private static boolean isSupportedBatch(List<SpellAbility> abilities) {
-        return !abilities.isEmpty() && abilities.size() <= 2 && abilities.stream().allMatch(TriggerRequest::isSupportedWrapper)
+        return !abilities.isEmpty() && abilities.size() <= 2 && abilities.stream().allMatch(TriggerQuestion::isSupportedWrapper)
                 && abilities.stream().map(SpellAbility::getHostCard).distinct().count() == abilities.size();
     }
 

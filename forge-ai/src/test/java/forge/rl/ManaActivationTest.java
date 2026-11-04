@@ -135,7 +135,7 @@ public class ManaActivationTest {
         Outcome recorded = execute(teacher);
         assertEquals(recorded, baseline, "Teacher changed native state or RNG");
         assertNull(recording.pending);
-        assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("options")).get("kind")).toList(),
+        assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("question")).get("kind")).toList(),
                 List.of("priority_mana", "mana_color", "priority_mana"));
         assertEquals(recording.entries.get(0).answer(), List.of(1));
         assertEquals(recording.entries.get(2).answer(), List.of(0));
@@ -162,7 +162,7 @@ public class ManaActivationTest {
             List<Map<String, Object>> requests = new ArrayList<>();
             Fixture fixture = fixture(new LobbyPlayerRl("first", request -> {
                 requests.add(request);
-                var options = (Map<?, ?>) request.get("options");
+                var options = (Map<?, ?>) request.get("question");
                 return List.of(options.get("kind").equals("mana_color") ? desired : requests.size() == 1 ? 0 : 1);
             }));
             var controller = fixture.player().getController();
@@ -170,7 +170,7 @@ public class ManaActivationTest {
             assertFalse(fixture.land().isTapped());
             var selected = controller.chooseSpellAbilityToPlay().get(0);
             assertTrue(controller.playChosenSpellAbility(selected));
-            var child = (Map<?, ?>) requests.get(2).get("options");
+            var child = (Map<?, ?>) requests.get(2).get("question");
             String symbol = (String) ((List<?>) child.get("items")).get(desired);
             byte color = forge.card.MagicColor.fromName(symbol);
             assertEquals(fixture.player().getManaPool().getAmountOfColor(color), 1);
@@ -189,7 +189,7 @@ public class ManaActivationTest {
         assertThrows(UnsupportedOperationException.class, () -> unbound.player().getController().chooseSpellAbilityToPlay());
         for (List<Integer> invalid : List.of(List.<Integer>of(), List.of(-1), List.of(2), List.of(0, 1))) {
             Fixture bad = fixture(new LobbyPlayerRl("first", request -> {
-                var options = (Map<?, ?>) request.get("options");
+                var options = (Map<?, ?>) request.get("question");
                 return options.get("kind").equals("mana_color") ? invalid : List.of(1);
             }));
             var controller = bad.player().getController();
@@ -218,7 +218,7 @@ public class ManaActivationTest {
         ((PlayerControllerRl) plannedController).closeObservation();
 
         Fixture repeated = fixture(new LobbyPlayerRl("first", request -> {
-            var options = (Map<?, ?>) request.get("options");
+            var options = (Map<?, ?>) request.get("question");
             return options.get("kind").equals("mana_color") ? List.of(0) : List.of(1);
         }));
         var repeatedController = repeated.player().getController();
@@ -229,7 +229,7 @@ public class ManaActivationTest {
         ((PlayerControllerRl) repeatedController).closeObservation();
         Fixture[] wrongMode = {null};
         wrongMode[0] = fixture(new LobbyPlayerRl("first", request -> {
-            if (((Map<?, ?>) request.get("options")).get("kind").equals("mana_color")) {
+            if (((Map<?, ?>) request.get("question")).get("kind").equals("mana_color")) {
                 var nativeAbility = wrongMode[0].land().getSpellAbilities().stream()
                         .filter(SpellAbility::isManaAbility).findFirst().orElseThrow();
                 assertThrows(UnsupportedOperationException.class, () -> wrongMode[0].player().getController()

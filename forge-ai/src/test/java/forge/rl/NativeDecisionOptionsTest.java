@@ -16,7 +16,7 @@ import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.util.collect.FCollection;
-import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.SelectionQuestion;
 import forge.rl.decisions.SelectionRecorder;
 import forge.rl.decisions.SelectionExecutor;
 import forge.game.spellability.SpellAbility;
@@ -73,7 +73,7 @@ public class NativeDecisionOptionsTest {
     @Test public void effectsSupplyFilteredAndCurrentOptions() {
         List<Request> requests = new ArrayList<>();
         Fixture fixture = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
             List<?> descriptions = (List<?>) request.get("items");
             List<String> names = descriptions.stream().map(option -> (String) ((Map<?, ?>) option).get("name")).toList();
             Request detached = new Request((String) request.get("kind"), names,
@@ -134,7 +134,7 @@ public class NativeDecisionOptionsTest {
                 new CardCollection(List.of(partial.first(), partial.second())), null, "optional pair", 2, 2, true, null));
 
         Fixture shortList = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
             assertEquals(request.get("min"), 1);
             assertEquals(request.get("max"), 1);
             return List.of(0);
@@ -142,7 +142,7 @@ public class NativeDecisionOptionsTest {
         var chosen = shortList.actor().getController().chooseCardsForEffect(new CardCollection(shortList.first()), null, "available", 3, 4, false, null);
         assertSame(chosen.getFirst(), shortList.first());
         Fixture empty = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
             assertEquals(request.get("min"), 0);
             assertEquals(request.get("max"), 0);
             return List.of();
@@ -174,9 +174,9 @@ public class NativeDecisionOptionsTest {
         var options = new CardCollection(List.of(fixture.first(), other));
         var view = new StateReader(fixture.actor(), 0L);
         try {
-            var request = new SelectionRequest<>(fixture.actor(), view, "cards", options, "two bears", 2, 2,
+            var request = new SelectionQuestion<>(fixture.actor(), view, "cards", options, "two bears", 2, 2,
                     false, null, null, null);
-            var items = (List<?>) ((Map<?, ?>) request.data.get("options")).get("items");
+            var items = (List<?>) ((Map<?, ?>) request.data.get("question")).get("items");
             assertEquals(((Map<?, ?>) items.get(0)).get("name"), ((Map<?, ?>) items.get(1)).get("name"));
             assertNotEquals(((Map<?, ?>) items.get(0)).get("key"), ((Map<?, ?>) items.get(1)).get("key"));
             String saved = request.data.toString();

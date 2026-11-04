@@ -108,7 +108,7 @@ public class CastingPriorityTest {
         int[] executions = {0};
         var callback = new IPlayerDecisionCallback() {
             @Override public List<Integer> choose(Map<String, Object> request) {
-                var options = (Map<?, ?>) request.get("options");
+                var options = (Map<?, ?>) request.get("question");
                 if (options.get("kind").equals("mana_payment")) { return List.of(0, 1, 0, 0); }
                 var items = (List<?>) options.get("items");
                 for (int i = 0; i < items.size(); i++) {
@@ -117,7 +117,7 @@ public class CastingPriorityTest {
                 throw new AssertionError("Expected native spell candidate");
             }
             @Override public void executed(Map<String, Object> value) {
-                var result = (Map<?, ?>) value.get("options");
+                var result = (Map<?, ?>) value.get("question");
                 assertEquals(result.get("reported"), false);
                 assertEquals(result.get("onStack"), false);
                 executions[0]++;
@@ -150,14 +150,14 @@ public class CastingPriorityTest {
             assertEquals(recording.requests.size(), 5);
             assertNull(recording.pending);
             assertFalse(recording.executing);
-            assertEquals(((Map<?, ?>) recording.requests.get(0).get("options")).get("kind"), "priority");
-            assertEquals(((Map<?, ?>) recording.requests.get(1).get("options")).get("kind"), "mana_payment");
-            var result = (Map<?, ?>) recording.execution.get("options");
+            assertEquals(((Map<?, ?>) recording.requests.get(0).get("question")).get("kind"), "priority");
+            assertEquals(((Map<?, ?>) recording.requests.get(1).get("question")).get("kind"), "mana_payment");
+            var result = (Map<?, ?>) recording.execution.get("question");
             assertEquals(result.get("reported"), true);
             assertEquals(result.get("onStack"), true);
             assertEquals(recording.answers.subList(2, 5), List.of(List.of(0), List.of(0), List.of(0)));
             for (int i = 2; i < 5; i++) {
-                assertEquals(((Map<?, ?>) recording.requests.get(i).get("options")).get("kind"), "priority");
+                assertEquals(((Map<?, ?>) recording.requests.get(i).get("question")).get("kind"), "priority");
                 var state = (Map<?, ?>) recording.requests.get(i).get("state");
                 assertEquals(((List<?>) state.get("stack")).size(), i == 4 ? 0 : 1);
                 var creature = ((List<?>) state.get("cards")).stream().map(card -> (Map<?, ?>) card)
@@ -199,7 +199,7 @@ public class CastingPriorityTest {
     }
 
     private static int option(Map<String, Object> request, String type, String name) {
-        var items = (List<?>) ((Map<?, ?>) request.get("options")).get("items");
+        var items = (List<?>) ((Map<?, ?>) request.get("question")).get("items");
         for (int i = 1; i < items.size(); i++) {
             var item = (Map<?, ?>) items.get(i);
             if (type.equals(item.get("type")) && name.equals(item.get("name"))) { return i; }
@@ -210,7 +210,7 @@ public class CastingPriorityTest {
     @Test public void clientCanPlayLandFloatBasicManaThenSpendItInNativeCast() {
         int[] step = {0};
         var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", request -> {
-            var options = (Map<?, ?>) request.get("options");
+            var options = (Map<?, ?>) request.get("question");
             if (options.get("kind").equals("mana_payment")) {
                 assertEquals(options.get("pool"), List.of(2));
                 return List.of(1, 1, 0, 0, 2);
@@ -251,7 +251,7 @@ public class CastingPriorityTest {
         List<Map<String, Object>> results = new ArrayList<>();
         var cancelled = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
             @Override public List<Integer> choose(Map<String, Object> request) {
-                return ((Map<?, ?>) request.get("options")).get("kind").equals("mana_payment")
+                return ((Map<?, ?>) request.get("question")).get("kind").equals("mana_payment")
                         ? List.of(0, 0) : List.of(option(request, "cast_spell", "Grizzly Bears"));
             }
             @Override public void executed(Map<String, Object> result) { results.add(result); }
@@ -260,8 +260,8 @@ public class CastingPriorityTest {
         assertFalse(cancelled.player().getController().playChosenSpellAbility(spell));
         assertTrue(cancelled.game().getStack().isEmpty());
         assertTrue(cancelled.game().getCardState(spell.getHostCard()).isInZone(ZoneType.Hand));
-        assertEquals(((Map<?, ?>) results.get(0).get("options")).get("reported"), false);
-        assertEquals(((Map<?, ?>) results.get(0).get("options")).get("onStack"), false);
+        assertEquals(((Map<?, ?>) results.get(0).get("question")).get("reported"), false);
+        assertEquals(((Map<?, ?>) results.get(0).get("question")).get("onStack"), false);
         close(cancelled);
     }
 

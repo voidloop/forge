@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
-public final class PriorityRequest implements DecisionRequest {
+public final class PriorityQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Choice> bindings = new ArrayList<>();
@@ -75,7 +75,7 @@ public final class PriorityRequest implements DecisionRequest {
     }
 
     private static boolean hasOrdinaryCardAbilities(Card card) {
-        return TriggerRequest.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
+        return TriggerQuestion.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
                 && (card.isCreature() || card.getKeywords().isEmpty() && card.getStaticAbilities().isEmpty())
                 && card.getSpellAbilities().size() == 1;
     }
@@ -120,13 +120,13 @@ public final class PriorityRequest implements DecisionRequest {
     }
 
     private static boolean isSupportedStackAbility(SpellAbility ability) {
-        return TriggerRequest.isSupportedWrapper(ability)
+        return TriggerQuestion.isSupportedWrapper(ability)
                 || ability.isSpell() && ability.getSubAbility() == null
                 && (ability.getApi() == ApiType.PermanentCreature && !ability.usesTargeting()
                 || ability.getApi() == ApiType.DealDamage && ability.usesTargeting());
     }
 
-    public PriorityRequest(Player player, StateReader view) {
+    public PriorityQuestion(Player player, StateReader view) {
         this.player = player;
         requireContext(player);
         List<Map<String, Object>> items = new ArrayList<>();
@@ -161,7 +161,7 @@ public final class PriorityRequest implements DecisionRequest {
                 items.add(Map.copyOf(item));
             }
         }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "priority",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority",
                 "scope", "ordinary_lands_creatures_mana", "items", List.copyOf(items)));
     }
 
@@ -267,7 +267,7 @@ public final class PriorityRequest implements DecisionRequest {
 
         public Map<String, Object> result(Player player, StateReader view, boolean reported) {
             boolean onStack = stack(player).stream().anyMatch(sa -> sa == ability);
-            return Map.of("state", view.snapshot(), "options", Map.of("kind", "cast_result",
+            return Map.of("state", view.snapshot(), "question", Map.of("kind", "cast_result",
                     "source", view.reference(ability.getHostCard()), "ability", variant,
                     "reported", reported, "onStack", onStack));
         }

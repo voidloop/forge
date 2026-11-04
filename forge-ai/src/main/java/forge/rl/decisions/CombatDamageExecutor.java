@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public record CombatDamageExecutor(CombatDamageRequest request, List<Integer> answer) implements DecisionExecutor<Map<Card, Integer>> {
+public record CombatDamageExecutor(CombatDamageQuestion request, List<Integer> answer) implements DecisionExecutor<Map<Card, Integer>> {
     @Override public Map<Card, Integer> apply() {
         request.validate(answer);
         Map<Card, Integer> result = new LinkedHashMap<>();

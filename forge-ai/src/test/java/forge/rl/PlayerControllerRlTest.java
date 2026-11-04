@@ -58,8 +58,8 @@ public class PlayerControllerRlTest {
             AtomicInteger calls = new AtomicInteger();
             var fixture = fixture(request -> {
                 calls.incrementAndGet();
-                assertEquals(request.keySet(), java.util.Set.of("state", "options"));
-                Map<?, ?> options = (Map<?, ?>) request.get("options");
+                assertEquals(request.keySet(), java.util.Set.of("state", "question"));
+                Map<?, ?> options = (Map<?, ?>) request.get("question");
                 return switch ((String) options.get("kind")) {
                     case "number" -> List.of(3);
                     case "number_option", "binary", "confirm", "type" -> List.of(1);

@@ -15,7 +15,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final native damage map; target bindings are captured before the choice. */
-public final class CombatDamageRequest implements DecisionRequest {
+public final class CombatDamageQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
@@ -25,7 +25,7 @@ public final class CombatDamageRequest implements DecisionRequest {
     private final CardCollectionView offered;
     private final int damage;
 
-    public CombatDamageRequest(Player player, StateReader view, Card source, CardCollectionView targets,
+    public CombatDamageQuestion(Player player, StateReader view, Card source, CardCollectionView targets,
             CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
         this.player = player;
         this.combat = Objects.requireNonNull(player.getGame().getCombat(), "No combat for damage assignment");
@@ -38,7 +38,7 @@ public final class CombatDamageRequest implements DecisionRequest {
         if (hasInvalidAssignmentArguments(remaining, overrideOrder)) {
             throw new IllegalArgumentException("Invalid native damage assignment arguments");
         }
-        data = Map.of("state", view.snapshot(), "options", StateReader.data(
+        data = Map.of("state", view.snapshot(), "question", StateReader.data(
                 "kind", "combat_damage", "scope", "ordinary_vanilla_duel", "source", view.reference(source),
                 "defender", defender == null ? null : view.reference(defender), "damage", damage,
                 "items", targets.stream().map(c -> Map.of("key", view.reference(c), "name", c.getName())).toList()));
@@ -96,8 +96,8 @@ public final class CombatDamageRequest implements DecisionRequest {
             if (isHiddenCard(card, player)) {
                 throw new UnsupportedOperationException("Combat damage visibility");
             }
-            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
-            else { PriorityRequest.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
+            else { PriorityQuestion.requireCreature(card); }
         }
     }
 

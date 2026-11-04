@@ -11,14 +11,14 @@ import java.util.Map;
 import java.util.Objects;
 
 /** A boolean confirmation, bound to this invocation's exact native ability. */
-public final class ConfirmActionRequest implements DecisionRequest {
+public final class ConfirmActionQuestion implements DecisionRequest {
     private final Player player;
     private final SpellAbility ability;
     private final Card source;
     private final Player activator;
     private final Map<String, Object> data;
 
-    public ConfirmActionRequest(Player player, StateReader view, SpellAbility ability,
+    public ConfirmActionQuestion(Player player, StateReader view, SpellAbility ability,
             PlayerActionConfirmMode mode, String message, List<String> options, Card cardToShow,
             Map<String, Object> params) {
         this.player = player;
@@ -34,7 +34,7 @@ public final class ConfirmActionRequest implements DecisionRequest {
                 "source", view.reference(source), "api", Objects.toString(ability.getApi(), ""),
                 "description", Objects.toString(ability.getDescription(), ""),
                 "activatingPlayer", activator == null ? null : view.reference(activator));
-        data = Map.of("state", facts, "options", StateReader.data("kind", "confirm",
+        data = Map.of("state", facts, "question", StateReader.data("kind", "confirm",
                 "prompt", Objects.toString(message, ""), "choice", Objects.toString(mode, ""),
                 "ability", context));
     }

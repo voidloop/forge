@@ -98,7 +98,7 @@ public class MulliganTest {
         return new Outcome(OriginalCompositeChoice.observe(game), MyRandom.getRandom().nextLong());
     }
     private static boolean priority(Map<String, Object> request) {
-        return ((String) ((Map<?, ?>) request.get("options")).get("kind")).startsWith("priority_");
+        return ((String) ((Map<?, ?>) request.get("question")).get("kind")).startsWith("priority_");
     }
     private static class Recording implements IDecisionRecordCallback {
         final List<Map<String, Object>> requests = new ArrayList<>();
@@ -188,12 +188,12 @@ public class MulliganTest {
                         assertEquals(choose(teacher, actor, first, count), expected);
                         assertNull(saved.pending);
                         assertEquals(saved.requests.size(), count == 0 ? 1 : 2);
-                        var keep = (Map<?, ?>) saved.requests.get(0).get("options");
+                        var keep = (Map<?, ?>) saved.requests.get(0).get("question");
                         assertEquals(keep.get("firstPlayer"), Map.of("kind", "player", "id", teacher.getPlayers().get(first).getId()));
                         assertEquals(keep.get("cardsToReturn"), count);
                         assertEquals(saved.answers.get(0), List.of(expected.keep() ? 1 : 0));
                         if (count != 0) {
-                            var tuck = (Map<?, ?>) saved.requests.get(1).get("options");
+                            var tuck = (Map<?, ?>) saved.requests.get(1).get("question");
                             assertEquals(((List<?>) tuck.get("items")).size(), 7, "Bindings must precede AI list mutation");
                             assertEquals(tuck.get("min"), count);
                             assertEquals(tuck.get("max"), count);
@@ -264,7 +264,7 @@ public class MulliganTest {
         assertTrue(player.getController().tuckCardsViaMulligan(player.getCardsIn(ZoneType.Hand), 0).isEmpty());
         assertEquals(saved.requests.size(), 1);
         assertNull(saved.pending, "Zero tuck must not open a callback question");
-        assertEquals(((Map<?, ?>) saved.requests.get(0).get("options")).get("cardsToReturn"), 7);
+        assertEquals(((Map<?, ?>) saved.requests.get(0).get("question")).get("cardsToReturn"), 7);
         int[] calls = {0};
         Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
             assertEquals(request, saved.requests.get(calls[0]));
@@ -358,7 +358,7 @@ public class MulliganTest {
             var failure = new IllegalArgumentException("mulligan recorder failed");
             Recording saved = new Recording() {
                 @Override public void after(List<Integer> answer) {
-                    if (((Map<?, ?>) pending.get("options")).get("kind").equals(kind)) { throw failure; }
+                    if (((Map<?, ?>) pending.get("question")).get("kind").equals(kind)) { throw failure; }
                     super.after(answer);
                 }
             };
@@ -374,9 +374,9 @@ public class MulliganTest {
             assertFalse(game.isGameOver());
             assertEquals(game.getAge(), GameStage.Mulligan);
             assertNotNull(saved.pending);
-            assertEquals(((Map<?, ?>) saved.pending.get("options")).get("kind"), kind);
+            assertEquals(((Map<?, ?>) saved.pending.get("question")).get("kind"), kind);
             assertEquals(saved.requests.size(), tuck ? 2 : 1, "Only completed choices before the failed record may be saved");
-            assertEquals(((Map<?, ?>) saved.requests.get(0).get("options")).get("kind"), "starting_player");
+            assertEquals(((Map<?, ?>) saved.requests.get(0).get("question")).get("kind"), "starting_player");
             close(game);
         }
     }
@@ -391,8 +391,8 @@ public class MulliganTest {
             Game teacher = fixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), bad);
             assertEquals(start(teacher, 42), expected);
             assertNull(saved.pending);
-            assertTrue(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("options")).get("kind").equals("mulligan_keep")));
-            assertEquals(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("options")).get("kind").equals("mulligan_tuck")), bad);
+            assertTrue(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("mulligan_keep")));
+            assertEquals(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("mulligan_tuck")), bad);
             int[] index = {0};
             Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
                 if (priority(request)) { throw new AtPriority(); }
@@ -410,7 +410,7 @@ public class MulliganTest {
         int[] keeps = {0};
         List<Card> ordered = new ArrayList<>();
         Game game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
-            var options = (Map<?, ?>) request.get("options");
+            var options = (Map<?, ?>) request.get("question");
             switch ((String) options.get("kind")) {
                 case "starting_player": return List.of(p.getGame().getPlayers().indexOf(p.getSingleOpponent()));
                 case "mulligan_keep": return List.of(keeps[0]++ < 4 ? 0 : 1);

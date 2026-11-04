@@ -148,7 +148,7 @@ public class SelectionContractTest {
             assertNull(recording.pending);
             assertEquals(recording.entries.size(), 16);
             for (int offset : List.of(0, 8)) {
-                var options = (Map<?, ?>) recording.entries.get(offset + 2).request().get("options");
+                var options = (Map<?, ?>) recording.entries.get(offset + 2).request().get("question");
                 assertEquals(options.get("min"), 2);
                 assertEquals(options.get("max"), 2);
                 var items = (List<?>) options.get("items");

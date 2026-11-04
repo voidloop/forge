@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
-public final class MulliganRequests {
+public final class MulliganQuestions {
     public record Keep(Map<String, Object> data) implements DecisionRequest { }
 
     static void require(Player player) {
@@ -26,17 +26,17 @@ public final class MulliganRequests {
         if (hasInvalidKeepContext(player, first, count)) {
             throw new IllegalArgumentException("Invalid native mulligan context");
         }
-        return new Keep(Map.of("state", view.snapshot(), "options", Map.of("kind", "mulligan_keep",
+        return new Keep(Map.of("state", view.snapshot(), "question", Map.of("kind", "mulligan_keep",
                 "firstPlayer", view.reference(first), "cardsToReturn", count,
                 "items", List.of("mulligan", "keep"))));
     }
 
-    public static SelectionRequest<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
+    public static SelectionQuestion<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
         require(player);
         if (hasInvalidTuckContext(player, hand, count)) {
             throw new UnsupportedOperationException("Invalid native London tuck count or hand");
         }
-        return new SelectionRequest<>(player, view, "mulligan_tuck", hand, "", count, count,
+        return new SelectionQuestion<>(player, view, "mulligan_tuck", hand, "", count, count,
                 false, null, null, null);
     }
 

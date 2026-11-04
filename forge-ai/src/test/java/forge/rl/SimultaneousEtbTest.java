@@ -12,7 +12,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerRequest;
+import forge.rl.decisions.TriggerQuestion;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -156,7 +156,7 @@ public class SimultaneousEtbTest {
             HelpfulHunterTest.opponent(teacher, recording);
             assertEquals(run(teacher, mixed), baseline);
             assertNull(recording.pending);
-            var kinds = recording.requests.stream().map(request -> ((Map<?, ?>) request.get("options")).get("kind")).toList();
+            var kinds = recording.requests.stream().map(request -> ((Map<?, ?>) request.get("question")).get("kind")).toList();
             assertEquals(Collections.frequency(kinds, "trigger_prepare"), 1);
             int preparation = kinds.indexOf("trigger_prepare");
             assertEquals(new HashSet<>(recording.answers.get(preparation)), Set.of(0, 1));
@@ -205,7 +205,7 @@ public class SimultaneousEtbTest {
                     ((WrappedAbility) wrappers.get(0)).getWrappedAbility().copy(), null);
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerRequest(f.player(), view, wrappers);
+            var request = new TriggerQuestion(f.player(), view, wrappers);
             assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
@@ -267,7 +267,7 @@ public class SimultaneousEtbTest {
             inner.getMapParams().put(api == ApiType.Draw ? "NumCards" : "LifeAmount", "2");
             inner.getMapParams().put("Defined", "You");
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerRequest(f.player(), view, List.of(wrapper));
+            var request = new TriggerQuestion(f.player(), view, List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
             assertEquals(new TriggerRecorder().encode(request, null), List.of(0));
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {

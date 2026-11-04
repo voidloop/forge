@@ -109,8 +109,8 @@ public class BasicLandPriorityTest {
     @Test public void clientCanPassChooseLandAndReceivePriorityAgain() {
         List<Map<?, ?>> requests = new ArrayList<>();
         Fixture fixture = fixture(envelope -> {
-            assertEquals(envelope.keySet(), java.util.Set.of("state", "options"));
-            Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+            assertEquals(envelope.keySet(), java.util.Set.of("state", "question"));
+            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
             requests.add(request);
             assertEquals(request.get("kind"), "priority");
             assertEquals(request.get("scope"), "ordinary_lands_creatures_mana");
@@ -133,7 +133,7 @@ public class BasicLandPriorityTest {
         assertEquals(((List<?>) requests.get(2).get("items")).size(), 2);
         for (boolean opponentTurn : List.of(false, true)) {
             Fixture restricted = fixture(envelope -> {
-                Map<?, ?> request = (Map<?, ?>) envelope.get("options");
+                Map<?, ?> request = (Map<?, ?>) envelope.get("question");
                 assertEquals(request.get("items"), List.of(Map.of("type", "pass")));
                 return List.of(0);
             });

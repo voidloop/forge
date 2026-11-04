@@ -2,7 +2,7 @@ package forge.rl.decisions;
 
 import java.util.List;
 
-public record ConfirmActionExecutor(ConfirmActionRequest request, List<Integer> answer) implements DecisionExecutor<Boolean> {
+public record ConfirmActionExecutor(ConfirmActionQuestion request, List<Integer> answer) implements DecisionExecutor<Boolean> {
     @Override public Boolean apply() {
         request.requireBinding();
         if (!isBooleanAnswer()) { throw new IllegalArgumentException("Invalid confirmation response"); }

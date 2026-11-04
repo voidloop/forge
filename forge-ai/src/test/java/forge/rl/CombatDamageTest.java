@@ -12,8 +12,8 @@ import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.CombatDamageRequest;
-import forge.rl.decisions.CombatGraveyardRequest;
+import forge.rl.decisions.CombatDamageQuestion;
+import forge.rl.decisions.CombatGraveyardQuestion;
 import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
 import forge.util.MyRandom;
@@ -148,7 +148,7 @@ public class CombatDamageTest {
             var teacher = BlockersTest.fixture(new LobbyPlayerTeacher("first", recording), new LobbyPlayerTeacher("second", recording), scenario);
             assertEquals(run(teacher), expected, "Teacher changed facts or RNG");
             assertNull(recording.pending);
-            assertEquals(recording.requests.stream().filter(r -> ((Map<?, ?>) r.get("options")).get("kind").equals("combat_damage")).count(),
+            assertEquals(recording.requests.stream().filter(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("combat_damage")).count(),
                     scenario == 0 ? 0L : scenario == 1 ? 4L : 3L);
             int[] position = {0};
             IPlayerDecisionCallback callback = request -> {
@@ -167,7 +167,7 @@ public class CombatDamageTest {
     @Test public void clientCanOverassignOrSplitWithoutLethalOrdering() {
         for (List<Integer> answer : List.of(List.of(1, 6), List.of(0, 1, 1, 5))) {
             IPlayerDecisionCallback callback = request -> {
-                var options = (Map<?, ?>) request.get("options");
+                var options = (Map<?, ?>) request.get("question");
                 return switch ((String) options.get("kind")) {
                     case "priority" -> List.of(0);
                     case "declare_blockers" -> List.of(0, 0, 1, 0);
@@ -211,7 +211,7 @@ public class CombatDamageTest {
         var view = new StateReader(player, 0L);
         var targets = new CardCollection(f.game().getCombat().getBlockers(f.attackers().get(0)));
         try {
-            var request = new CombatDamageRequest(player, view, f.attackers().get(0), targets,
+            var request = new CombatDamageQuestion(player, view, f.attackers().get(0), targets,
                     f.game().getCombat().getAttackers(), 6, f.defender(), true);
             var lki = CardCopyService.getLKICopy(targets.get(0));
             assertEquals(lki, targets.get(0)); assertNotSame(lki, targets.get(0));
@@ -228,14 +228,14 @@ public class CombatDamageTest {
         var dead = new CardCollection(f.blockers().subList(0, 2));
         dead.forEach(c -> c.setDamage(2));
         try {
-            var request = new CombatGraveyardRequest(f.defender(), view, dead, ZoneType.Graveyard, null);
+            var request = new CombatGraveyardQuestion(f.defender(), view, dead, ZoneType.Graveyard, null);
             assertEquals(List.copyOf(new CombatGraveyardExecutor(request, List.of(1, 0)).apply()), List.of(dead.get(1), dead.get(0)));
             for (List<Integer> answer : List.of(List.of(0), List.of(0, 0), List.of(0, 2))) {
                 assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, answer).apply());
             }
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardRecorder().encode(request, new CardCollection(
                     List.of(CardCopyService.getLKICopy(dead.get(0)), dead.get(1)))));
-            assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardRequest(f.defender(), view, dead, ZoneType.Library, null));
+            assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardQuestion(f.defender(), view, dead, ZoneType.Library, null));
             dead.get(0).setDamage(0);
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, List.of(0, 1)).apply());
             dead.get(0).setDamage(2);

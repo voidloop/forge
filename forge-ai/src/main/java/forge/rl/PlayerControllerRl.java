@@ -1,19 +1,19 @@
 package forge.rl;
 
-import forge.rl.decisions.PriorityRequest;
-import forge.rl.decisions.AttackersRequest;
-import forge.rl.decisions.BlockersRequest;
-import forge.rl.decisions.CombatDamageRequest;
-import forge.rl.decisions.CombatGraveyardRequest;
-import forge.rl.decisions.CleanupRequests;
-import forge.rl.decisions.SelectionRequest;
-import forge.rl.decisions.ConfirmActionRequest;
+import forge.rl.decisions.PriorityQuestion;
+import forge.rl.decisions.AttackersQuestion;
+import forge.rl.decisions.BlockersQuestion;
+import forge.rl.decisions.CombatDamageQuestion;
+import forge.rl.decisions.CombatGraveyardQuestion;
+import forge.rl.decisions.CleanupQuestions;
+import forge.rl.decisions.SelectionQuestion;
+import forge.rl.decisions.ConfirmActionQuestion;
 import forge.rl.decisions.ConfirmActionExecutor;
-import forge.rl.decisions.ManaRequest;
-import forge.rl.decisions.ManaPaymentRequest;
-import forge.rl.decisions.MulliganRequests;
-import forge.rl.decisions.StartingPlayerRequest;
-import forge.rl.decisions.TriggerRequest;
+import forge.rl.decisions.ManaQuestion;
+import forge.rl.decisions.ManaPaymentQuestion;
+import forge.rl.decisions.MulliganQuestions;
+import forge.rl.decisions.StartingPlayerQuestion;
+import forge.rl.decisions.TriggerQuestion;
 import forge.rl.decisions.SelectionExecutor;
 import forge.rl.decisions.TriggerExecutor;
 import forge.rl.decisions.CombatDamageExecutor;
@@ -79,11 +79,11 @@ public final class PlayerControllerRl extends PlayerController {
     private boolean callbackActive;
     private RuntimeException failure;
     private Prepared active;
-    private PriorityRequest.Choice pendingPriority;
-    private PriorityRequest.Choice activePriority;
-    private ManaRequest.Choice pendingMana;
-    private ManaRequest.Choice activeMana;
-    private ManaPaymentRequest payment;
+    private PriorityQuestion.Choice pendingPriority;
+    private PriorityQuestion.Choice activePriority;
+    private ManaQuestion.Choice pendingMana;
+    private ManaQuestion.Choice activeMana;
+    private ManaPaymentQuestion payment;
     private SpellAbility paymentRoot;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
 
@@ -91,7 +91,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            return response(Map.of("state", observation.snapshot(), "options", options));
+            return response(Map.of("state", observation.snapshot(), "question", options));
         } catch (RuntimeException error) { throw stop(error); }
     }
 
@@ -127,7 +127,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            SelectionRequest<T> request = new SelectionRequest<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
+            SelectionQuestion<T> request = new SelectionQuestion<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
             return new SelectionExecutor<>(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -199,7 +199,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) {
         checkActive();
         try {
-            TriggerRequest.requireResolution(player, effectSA, mayChoseNewTargets);
+            TriggerQuestion.requireResolution(player, effectSA, mayChoseNewTargets);
             AbilityUtils.resolve(effectSA);
         }
         catch (RuntimeException error) { throw stop(error); }
@@ -209,7 +209,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new TriggerRequest(player, observation, activePlayerSAs);
+            var request = new TriggerQuestion(player, observation, activePlayerSAs);
             new TriggerExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -269,7 +269,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatDamageRequest(player, observation, source, targets, remaining, damage, defender, overrideOrder);
+            var request = new CombatDamageQuestion(player, observation, source, targets, remaining, damage, defender, overrideOrder);
             return new CombatDamageExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -322,7 +322,7 @@ public final class PlayerControllerRl extends PlayerController {
             if (cannotStartConfirmation()) { throw new IllegalStateException("Previous choice has not been executed"); }
             confirming = true;
             startObservation();
-            var request = new ConfirmActionRequest(player, observation, sa, mode, message, options, cardToShow, params);
+            var request = new ConfirmActionQuestion(player, observation, sa, mode, message, options, cardToShow, params);
             return new ConfirmActionExecutor(request, response(request.data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
         finally { confirming = false; }
@@ -341,7 +341,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new AttackersRequest(player, observation, attacker, combat);
+            var request = new AttackersQuestion(player, observation, attacker, combat);
             new AttackersExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -349,7 +349,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new BlockersRequest(player, observation, defender, combat);
+            var request = new BlockersQuestion(player, observation, defender, combat);
             new BlockersExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -361,7 +361,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void notifyOfValue(SpellAbility saSource, GameObject realtedTarget, String value) {
         checkActive();
         // Mana announcements ask no question; the resulting pool is read from native state.
-        if (saSource == null || !ManaRequest.supported(saSource)
+        if (saSource == null || !ManaQuestion.supported(saSource)
                 || !observation.canIdentify(saSource.getHostCard().getView())) { throw unsupported("notifyOfValue"); }
     }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) { throw unsupported("arrangeForScry"); }
@@ -371,7 +371,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatGraveyardRequest(player, observation, cards, destinationZone, source);
+            var request = new CombatGraveyardQuestion(player, observation, cards, destinationZone, source);
             return new CombatGraveyardExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -384,7 +384,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = CleanupRequests.create(player, observation, numDiscard);
+            var request = CleanupQuestions.create(player, observation, numDiscard);
             return new CardCollection(new SelectionExecutor<>(request, response(request.data)).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -400,7 +400,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = new StartingPlayerRequest(player, observation, isFirstGame);
+            var request = new StartingPlayerQuestion(player, observation, isFirstGame);
             return new StartingPlayerExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -428,7 +428,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            return new MulliganKeepExecutor(response(MulliganRequests.keep(player, observation, first, cardsToReturn).data())).apply();
+            return new MulliganKeepExecutor(response(MulliganQuestions.keep(player, observation, first, cardsToReturn).data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
@@ -438,7 +438,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = MulliganRequests.tuck(player, observation, hand, cardsToReturn);
+            var request = MulliganQuestions.tuck(player, observation, hand, cardsToReturn);
             return new CardCollection(new SelectionExecutor<>(request, cardsToReturn == 0 ? List.of() : response(request.data)).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -449,12 +449,12 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            if (ManaRequest.hasSource(player)) {
-                ManaRequest request = new ManaRequest(player, observation);
+            if (ManaQuestion.hasSource(player)) {
+                ManaQuestion request = new ManaQuestion(player, observation);
                 pendingMana = new ManaExecutor(request, response(request.data), player).apply();
                 return pendingMana == null ? null : List.of(pendingMana.ability);
             }
-            PriorityRequest request = new PriorityRequest(player, observation);
+            PriorityQuestion request = new PriorityQuestion(player, observation);
             pendingPriority = new PriorityExecutor(request, response(request.data)).apply();
             return pendingPriority == null ? null : List.of(pendingPriority.ability);
         } catch (RuntimeException error) { throw stop(error); }
@@ -554,7 +554,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw unsupported("nested mana payment");
             }
             startObservation();
-            payment = new ManaPaymentRequest(player, observation, toPay, costPartMana, sa, matrix, effect);
+            payment = new ManaPaymentQuestion(player, observation, toPay, costPartMana, sa, matrix, effect);
             paymentRoot = sa;
             if (toPay.isZero()) { return new ManaPaymentExecutor(payment, response(payment.data), new ManaCostBeingPaid(toPay)).apply(); }
             return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
@@ -565,7 +565,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             if (payment == null || paymentRoot != ability || effect) { throw unsupported("unbound mana payment"); }
-            ManaPaymentRequest request = payment;
+            ManaPaymentQuestion request = payment;
             payment = null;
             return new ManaPaymentExecutor(request, response(request.data), toPay).apply();
         } catch (RuntimeException error) { throw stop(error); }

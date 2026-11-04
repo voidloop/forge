@@ -10,7 +10,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.AttackersRequest;
+import forge.rl.decisions.AttackersQuestion;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventAttackersDeclared;
@@ -130,8 +130,8 @@ public class AttackersTest {
             assertEquals(run(teacher), expected, "Teacher changed combat facts or RNG");
             assertNull(recording.pending);
             assertEquals(recording.answers.get(2), guarded ? List.of() : List.of(0, 0, 1, 0));
-            assertEquals(((Map<?, ?>) recording.requests.get(2).get("options")).get("kind"), "declare_attackers");
-            assertEquals(((List<?>) ((Map<?, ?>) recording.requests.get(2).get("options")).get("items")).size(), 2);
+            assertEquals(((Map<?, ?>) recording.requests.get(2).get("question")).get("kind"), "declare_attackers");
+            assertEquals(((List<?>) ((Map<?, ?>) recording.requests.get(2).get("question")).get("items")).size(), 2);
             int[] position = {0};
             IPlayerDecisionCallback callback = request -> {
                 assertEquals(request, recording.requests.get(position[0]));
@@ -158,7 +158,7 @@ public class AttackersTest {
     @Test public void nativeLoopSkipsDeclarationWhenNoCreatureCanAttack() {
         var kinds = new ArrayList<Object>();
         IPlayerDecisionCallback callback = request -> {
-            kinds.add(((Map<?, ?>) request.get("options")).get("kind"));
+            kinds.add(((Map<?, ?>) request.get("question")).get("kind"));
             return List.of(0);
         };
         var f = fixture(new LobbyPlayerRl("first", callback), false);
@@ -175,7 +175,7 @@ public class AttackersTest {
         direct(f);
         StateReader view = new StateReader(f.actor(), 0L);
         try {
-            var request = new AttackersRequest(f.actor(), view, f.actor(), f.game().getCombat());
+            var request = new AttackersQuestion(f.actor(), view, f.actor(), f.game().getCombat());
             Card offered = f.creatures().get(0);
             Card lki = CardCopyService.getLKICopy(offered);
             assertNotSame(lki, offered);

@@ -189,7 +189,7 @@ public class ApnapEtbTest {
                 assertEquals(run(teacher), baseline);
                 assertNull(recording.pending);
                 assertNull(recording.execution);
-                var kinds = recording.requests.stream().map(r -> ((Map<?, ?>) r.get("options")).get("kind")).toList();
+                var kinds = recording.requests.stream().map(r -> ((Map<?, ?>) r.get("question")).get("kind")).toList();
                 assertEquals(kinds.subList(0, 2), List.of("trigger_prepare", "trigger_prepare"));
                 assertEquals(Collections.frequency(kinds, "trigger_prepare"), 2);
                 int[] position = {0};
@@ -236,7 +236,7 @@ public class ApnapEtbTest {
                         } else {
                             player.dangerouslySetController(new PlayerControllerRl(game, player, new LobbyPlayerAi(player.getName(), null), request -> {
                                 if (fails) { throw failure; }
-                                return ((Map<?, ?>) request.get("options")).get("kind").equals("trigger_prepare") ? List.of(0, 1) : List.of(0);
+                                return ((Map<?, ?>) request.get("question")).get("kind").equals("trigger_prepare") ? List.of(0, 1) : List.of(0);
                             }));
                         }
                     }

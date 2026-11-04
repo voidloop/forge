@@ -6,8 +6,8 @@ import forge.game.combat.CombatUtil;
 import java.util.ArrayList;
 import java.util.List;
 
-public record AttackersRecorder() implements DecisionRecorder<AttackersRequest, Void> {
-    @Override public List<Integer> encode(AttackersRequest request, Void ignored) {
+public record AttackersRecorder() implements DecisionRecorder<AttackersQuestion, Void> {
+    @Override public List<Integer> encode(AttackersQuestion request, Void ignored) {
         request.requireContext();
         var answer = new ArrayList<Integer>();
         for (Card card : request.combat.getAttackers()) {
@@ -24,7 +24,7 @@ public record AttackersRecorder() implements DecisionRecorder<AttackersRequest, 
         return List.copyOf(answer);
     }
 
-    private boolean hasExactBindings(AttackersRequest request, Card attacker, GameEntity defender, int attackerIndex, int defenderIndex) {
+    private boolean hasExactBindings(AttackersQuestion request, Card attacker, GameEntity defender, int attackerIndex, int defenderIndex) {
         return attackerIndex >= 0 && request.attackers.get(attackerIndex) == attacker
                 && defenderIndex >= 0 && request.defenders.get(defenderIndex) == defender;
     }

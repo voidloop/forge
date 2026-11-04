@@ -2,7 +2,7 @@ package forge.rl;
 
 import forge.rl.decisions.PriorityRecorder;
 
-import forge.rl.decisions.PriorityRequest;
+import forge.rl.decisions.PriorityQuestion;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -72,7 +72,7 @@ public class PlayerControllerTeacherTest {
         Outcome recorded = execute(teacher);
         assertEquals(recorded, baseline, "Recorder changed native facts or RNG");
         assertNull(recording.pending);
-        assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("options")).get("kind")).toList(),
+        assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("question")).get("kind")).toList(),
                 List.of("single_entity", "cards", "entities", "entities", "cards"));
         assertEquals(recording.entries.get(1).answer().size(), 2, "Multiple selection was not recorded in full");
         assertEquals(recording.entries.get(4).answer(), List.of(), "Empty optional answer was changed");
@@ -108,7 +108,7 @@ public class PlayerControllerTeacherTest {
             MyRandom.setRandom(new Random(0));
             execute(current[0]);
             assertNull(recording.pending);
-            assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("options")).get("kind")).toList(),
+            assertEquals(recording.entries.stream().map(entry -> ((Map<?, ?>) entry.request().get("question")).get("kind")).toList(),
                     List.of("single_entity", "cards", "entities", "entities", "cards"));
             assertEquals(recording.entries.get(1).answer().size(), 2);
         } finally { ((PlayerControllerTeacher) current[0].actor().getController()).closeObservation(); }
@@ -291,7 +291,7 @@ public class PlayerControllerTeacherTest {
         var fixture = priorityFixture(new LobbyPlayerAi("first", null), 0);
         var ability = fixture.forest().getFirstSpellAbility();
         var activator = ability.getActivatingPlayer();
-        PriorityRequest question = new PriorityRequest(fixture.player(), new StateReader(fixture.player(), 0L));
+        PriorityQuestion question = new PriorityQuestion(fixture.player(), new StateReader(fixture.player(), 0L));
         assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
         assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder().encode(question, List.of()));
         assertThrows(IllegalArgumentException.class, () -> new PriorityRecorder().encode(question, List.of(choice.get(0))));

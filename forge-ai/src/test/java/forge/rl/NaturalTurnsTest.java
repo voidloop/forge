@@ -13,7 +13,7 @@ import forge.game.phase.PhaseType;
 import forge.game.player.*;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.CleanupRequests;
+import forge.rl.decisions.CleanupQuestions;
 import forge.rl.decisions.SelectionExecutor;
 import forge.rl.decisions.SelectionRecorder;
 import forge.util.MyRandom;
@@ -176,7 +176,7 @@ public class NaturalTurnsTest {
                     assertEquals(chooseDiscard(teacher, actor, count), expected);
                     assertNull(saved.pending);
                     assertEquals(saved.requests.size(), 1);
-                    var options = (Map<?, ?>) saved.requests.get(0).get("options");
+                    var options = (Map<?, ?>) saved.requests.get(0).get("question");
                     assertEquals(options.get("kind"), "discard_cleanup");
                     assertEquals(options.get("min"), count);
                     assertEquals(options.get("max"), count);
@@ -204,7 +204,7 @@ public class NaturalTurnsTest {
         Player player = game.getPlayers().get(0);
         var view = new StateReader(player, 0L);
         try {
-            var request = CleanupRequests.create(player, view, 2);
+            var request = CleanupQuestions.create(player, view, 2);
             var hand = player.getCardsIn(ZoneType.Hand);
             var recorder = new SelectionRecorder<Card>();
             assertEquals(recorder.encode(request, List.of(hand.get(1), hand.get(0))), List.of(1, 0));
@@ -306,7 +306,7 @@ public class NaturalTurnsTest {
             assertNull(saved.pending);
             int discards = 0;
             for (Map<String, Object> request : saved.requests) {
-                var options = (Map<?, ?>) request.get("options");
+                var options = (Map<?, ?>) request.get("question");
                 if (options.get("kind").equals("discard_cleanup")) {
                     discards++;
                     assertEquals(options.get("min"), options.get("max"));
@@ -336,7 +336,7 @@ public class NaturalTurnsTest {
     @Test public void ordinaryClientCanPassIntoCleanupAndInvalidDiscardStops() {
         int[] discards = {0};
         var game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
-            var options = (Map<?, ?>) request.get("options");
+            var options = (Map<?, ?>) request.get("question");
             switch ((String) options.get("kind")) {
                 case "starting_player": return List.of(0);
                 case "mulligan_keep": return List.of(1);

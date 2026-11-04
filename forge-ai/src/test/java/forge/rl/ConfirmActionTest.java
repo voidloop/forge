@@ -155,7 +155,7 @@ public class ConfirmActionTest {
             for (Player player : game.getPlayers()) {
                 for (var mode : PlayerActionConfirmMode.values()) {
                     assertTrue(player.getController().confirmAction(ability(player), mode, null, null));
-                    Map<?, ?> options = (Map<?, ?>) recording.entries.get(recording.entries.size() - 1).request().get("options");
+                    Map<?, ?> options = (Map<?, ?>) recording.entries.get(recording.entries.size() - 1).request().get("question");
                     assertEquals(options.get("choice"), mode.toString());
                     assertEquals(options.get("prompt"), "");
                     assertEquals(((Map<?, ?>) options.get("ability")).get("api"), "Draw");
@@ -167,7 +167,7 @@ public class ConfirmActionTest {
 
     @Test public void rejectsUnsupportedMetadataAndUnboundSourcesBeforeQuestion() {
         for (boolean teacher : List.of(false, true)) {
-            for (String invalid : List.of("options", "null_options", "card", "params", "copy", "foreign", "library", "opponent_hand", "face_down", "activator")) {
+            for (String invalid : List.of("question", "null_options", "card", "params", "copy", "foreign", "library", "opponent_hand", "face_down", "activator")) {
                 Recording recording = new Recording();
                 Game game = fixture((p, l) -> teacher ? new PlayerControllerTeacher(p.getGame(), p, l, recording)
                         : new PlayerControllerRl(p.getGame(), p, l, request -> { throw new AssertionError(invalid); }), 3);
@@ -187,7 +187,7 @@ public class ConfirmActionTest {
                     }
                     var before = OriginalCompositeChoice.observe(game);
                     var error = expectThrows(UnsupportedOperationException.class, () -> actor.getController().confirmAction(sa, null, "invalid",
-                            invalid.equals("null_options") ? null : invalid.equals("options") ? List.of("extra") : List.of(),
+                            invalid.equals("null_options") ? null : invalid.equals("question") ? List.of("extra") : List.of(),
                             invalid.equals("card") ? host : null, invalid.equals("params") ? Map.of("secret", host) : null));
                     assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), error);
                     assertTrue(recording.entries.isEmpty());

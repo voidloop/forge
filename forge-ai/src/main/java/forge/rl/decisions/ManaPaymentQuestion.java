@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Fixed mana payment: final activation order, spend order and native result, without AI plans. */
-public final class ManaPaymentRequest implements DecisionRequest {
+public final class ManaPaymentQuestion implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final SpellAbility root;
@@ -34,7 +34,7 @@ public final class ManaPaymentRequest implements DecisionRequest {
     private final List<Boolean> available = new ArrayList<>();
     private final List<Integer> initial = new ArrayList<>();
 
-    public ManaPaymentRequest(Player player, StateReader view, ManaCost cost, CostPartMana part,
+    public ManaPaymentQuestion(Player player, StateReader view, ManaCost cost, CostPartMana part,
             SpellAbility root, ManaConversionMatrix matrix, boolean effect) {
         this.player = player;
         this.root = root;
@@ -42,7 +42,7 @@ public final class ManaPaymentRequest implements DecisionRequest {
         var game = player.getGame();
         // shortcut: ordinary fixed-cost spells and basic lands; extend with later cost families.
         Card host = root.getHostCard();
-        PriorityRequest.requireSpell(host);
+        PriorityQuestion.requireSpell(host);
         if (!isSupportedPaymentContext(part, effect)) {
             throw new UnsupportedOperationException("Fixed basic-land payment context");
         }
@@ -54,7 +54,7 @@ public final class ManaPaymentRequest implements DecisionRequest {
         identityMatrix(player.getManaPool());
         if (matrix != null) { identityMatrix(matrix); }
         for (Card card : game.getCardsIn(ZoneType.Battlefield)) {
-            if (isFaceUpCreature(card)) { PriorityRequest.requireSpell(card); continue; }
+            if (isFaceUpCreature(card)) { PriorityQuestion.requireSpell(card); continue; }
             if (!isSupportedBasicLand(card)) {
                 throw new UnsupportedOperationException("Basic-land payment battlefield");
             }
@@ -88,7 +88,7 @@ public final class ManaPaymentRequest implements DecisionRequest {
                     "ability", ability.getHostCard().getSpellAbilities().indexOf(ability),
                     "color", ability.getParam("Produced"), "canActivate", available.get(i), "inPool", initial.contains(i)));
         }
-        data = Map.of("state", view.snapshot(), "options", Map.of("kind", "mana_payment",
+        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_payment",
                 "source", view.reference(host), "cost", cost.toString(), "items", List.copyOf(items),
                 "pool", List.copyOf(initial)));
     }
@@ -118,7 +118,7 @@ public final class ManaPaymentRequest implements DecisionRequest {
 
     private boolean hasSupportedSpellEffect() {
         Card host = root.getHostCard();
-        return TriggerRequest.hasSupportedTriggers(host) && host.getReplacementEffects().isEmpty()
+        return TriggerQuestion.hasSupportedTriggers(host) && host.getReplacementEffects().isEmpty()
                 && root.getSubAbility() == null
                 && (root.getApi() == ApiType.PermanentCreature && !root.usesTargeting()
                 || root.getApi() == ApiType.DealDamage && root.usesTargeting());

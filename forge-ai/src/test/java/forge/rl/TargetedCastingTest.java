@@ -195,7 +195,7 @@ public class TargetedCastingTest {
                 assertNull(recording.pending);
                 assertFalse(recording.executing);
                 assertEquals(recording.answers.get(0).size(), 2);
-                assertEquals(((Map<?, ?>) recording.requests.get(1).get("options")).get("kind"), "mana_payment");
+                assertEquals(((Map<?, ?>) recording.requests.get(1).get("question")).get("kind"), "mana_payment");
                 assertEquals(recording.answers.get(1).subList(0, 2), List.of(1, baseline.activated().size()));
                 assertEquals(recording.answers.get(1).subList(2, 2 + baseline.activated().size()), baseline.activated());
                 int[] position = {0};
@@ -228,7 +228,7 @@ public class TargetedCastingTest {
     }
 
     private static List<Integer> castAnswer(Map<String, Object> request, int target) {
-        var items = (List<?>) ((Map<?, ?>) request.get("options")).get("items");
+        var items = (List<?>) ((Map<?, ?>) request.get("question")).get("items");
         for (int i = 1; i < items.size(); i++) {
             if ("cast_spell".equals(((Map<?, ?>) items.get(i)).get("type"))) { return List.of(i, target); }
         }
@@ -241,7 +241,7 @@ public class TargetedCastingTest {
                 List<Map<String, Object>> results = new ArrayList<>();
                 var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
                     @Override public List<Integer> choose(Map<String, Object> request) {
-                        return "mana_payment".equals(((Map<?, ?>) request.get("options")).get("kind"))
+                        return "mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind"))
                                 ? payment : castAnswer(request, name.equals("Sear") ? 1 : 3);
                     }
                     @Override public void executed(Map<String, Object> result) { results.add(result); }
@@ -266,7 +266,7 @@ public class TargetedCastingTest {
             int[] payments = {0};
             var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
                 @Override public List<Integer> choose(Map<String, Object> request) {
-                    if ("mana_payment".equals(((Map<?, ?>) request.get("options")).get("kind"))) {
+                    if ("mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind"))) {
                         payments[0]++; return List.of(0, 0);
                     }
                     return castAnswer(request, cancelTarget ? -1 : name.equals("Sear") ? 1 : 3);
@@ -277,7 +277,7 @@ public class TargetedCastingTest {
             assertFalse(controller.playChosenSpellAbility(controller.chooseSpellAbilityToPlay().get(0)));
             assertEquals(payments[0], cancelTarget ? 0 : 1);
             assertEquals(results.size(), 1);
-            var result = (Map<?, ?>) results.get(0).get("options");
+            var result = (Map<?, ?>) results.get(0).get("question");
             assertEquals(result.get("reported"), false);
             assertEquals(result.get("onStack"), false);
             assertTrue(f.game().getCardState(f.spell().getHostCard()).isInZone(ZoneType.Hand));
