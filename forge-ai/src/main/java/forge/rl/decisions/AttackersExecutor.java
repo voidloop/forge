@@ -3,7 +3,7 @@ package forge.rl.decisions;
 import forge.game.combat.CombatUtil;
 import java.util.List;
 
-public record AttackersExecutor(AttackersQuestion request, List<Integer> answer) implements DecisionExecutor<Void> {
+public record AttackersExecutor(AttackersRequest request, List<Integer> answer) implements DecisionExecutor<Void> {
     @Override public Void apply() {
         request.requireContext();
         if (!request.combat.getAttackers().isEmpty()) { throw new IllegalArgumentException("Combat changed during decision"); }

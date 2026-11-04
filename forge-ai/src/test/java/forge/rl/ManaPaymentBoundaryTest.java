@@ -53,7 +53,7 @@ public class ManaPaymentBoundaryTest {
         List<Object> before;
         int executions;
         int payments;
-        int poolQuestions;
+        int poolRequests;
 
         RecordingController(Game game, Player player, LobbyPlayerAi lobby) { super(game, player, lobby); }
 
@@ -82,7 +82,7 @@ public class ManaPaymentBoundaryTest {
         }
 
         @Override public Mana chooseManaFromPool(List<Mana> choices) {
-            poolQuestions++;
+            poolRequests++;
             return super.chooseManaFromPool(choices);
         }
     }
@@ -91,7 +91,7 @@ public class ManaPaymentBoundaryTest {
         MyRandom.setRandom(new Random(0));
         var seats = List.of(new RegisteredPlayer(new Deck("first")).setPlayer(lobby),
                 new RegisteredPlayer(new Deck("second")).setPlayer(new LobbyPlayerRl("second", request -> {
-                    throw new AssertionError("Unexpected opponent question");
+                    throw new AssertionError("Unexpected opponent request");
                 })));
         Game game = new Match(new GameRules(GameType.Constructed), seats, "payment boundary").createGame();
         game.getRegisteredPlayers().forEach(player -> player.setLife(20, null));
@@ -232,8 +232,8 @@ public class ManaPaymentBoundaryTest {
             assertEquals(recorder.payment, recorded.payment());
             assertEquals(recorder.executions, 1, "Mana sources execute inside the AI, not through this override");
             assertEquals(recorder.payments, 1);
-            if (floating) { assertTrue(recorder.poolQuestions > 0); }
-            else { assertEquals(recorder.poolQuestions, 0); }
+            if (floating) { assertTrue(recorder.poolRequests > 0); }
+            else { assertEquals(recorder.poolRequests, 0); }
             assertEquals(recorded.payment().spent().size(), 2);
             assertEquals(recorded.payment().activations().size(), floating ? 1 : 2);
             assertEquals(recorded.resources().pool().size(), floating ? 1 : 0);

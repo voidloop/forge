@@ -107,10 +107,9 @@ public class LyraCastingTest {
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
         Map<String, Object> execution;
-        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
-        @Override public void after(List<Integer> answer) { requests.add(pending); answers.add(List.copyOf(answer)); pending = null; }
-        @Override public void beginExecution() { assertNull(execution); }
-        @Override public void executed(Map<String, Object> result) { assertNull(execution); execution = result; }
+        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
+        @Override public void after(List<Integer> result) { requests.add(pending); answers.add(List.copyOf(result)); pending = null; }
+        @Override public void executed(Map<String, Object> data) { assertNull(execution); execution = data; }
     }
 
     private static void close(ManaPaymentBoundaryTest.Fixture f) {
@@ -134,11 +133,11 @@ public class LyraCastingTest {
         int[] position = {0};
         int[] executions = {0};
         var callback = new IPlayerDecisionCallback() {
-            @Override public List<Integer> choose(Map<String, Object> request) {
-                assertEquals(request, recording.requests.get(position[0]));
+            @Override public List<Integer> choose(Map<String, Object> req) {
+                assertEquals(req, recording.requests.get(position[0]));
                 return recording.answers.get(position[0]++);
             }
-            @Override public void executed(Map<String, Object> result) { assertEquals(result, recording.execution); executions[0]++; }
+            @Override public void executed(Map<String, Object> data) { assertEquals(data, recording.execution); executions[0]++; }
         };
         var replay = fixture(new LobbyPlayerRl("first", callback));
         opponent = replay.game().getPlayers().get(1);
@@ -171,7 +170,7 @@ public class LyraCastingTest {
                 @Override public List<Integer> choose(Map<String, Object> request) {
                     return "mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind")) ? List.of(0, 0) : cast(request);
                 }
-                @Override public void executed(Map<String, Object> result) { results.add(result); }
+                @Override public void executed(Map<String, Object> data) { results.add(data); }
             }));
             var controller = f.player().getController();
             var spell = controller.chooseSpellAbilityToPlay().get(0);
@@ -196,14 +195,14 @@ public class LyraCastingTest {
 
     @Test public void otherKeywordsTriggersAndStaticShapesStillStopBeforeCallingTheClient() {
         for (String kind : List.of("Serra Angel", "Ajani's Pridemate", "static")) {
-            var f = fixture(new LobbyPlayerRl("first", request -> { throw new AssertionError("Unexpected client question"); }));
+            var f = fixture(new LobbyPlayerRl("first", request -> { throw new AssertionError("Unexpected client request"); }));
             if (kind.equals("static")) {
                 f.spell().getHostCard().getStaticAbilities().getFirst().getMapParams().put("AddPower", "2");
             } else { OriginalCompositeChoice.add(f.game(), f.player(), kind); }
             assertThrows(UnsupportedOperationException.class, f.player().getController()::chooseSpellAbilityToPlay);
             close(f);
         }
-        var combat = AttackersTest.fixture(new LobbyPlayerRl("first", request -> { throw new AssertionError("Unexpected combat question"); }), false);
+        var combat = AttackersTest.fixture(new LobbyPlayerRl("first", request -> { throw new AssertionError("Unexpected combat request"); }), false);
         Card lyra = OriginalCompositeChoice.add(combat.game(), combat.actor(), "Lyra Dawnbringer");
         combat.actor().getZone(ZoneType.Hand).remove(lyra);
         combat.actor().getZone(ZoneType.Battlefield).add(lyra);

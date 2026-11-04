@@ -1,6 +1,5 @@
 package forge.rl;
 
-import forge.rl.decisions.TriggerRecorder;
 import forge.rl.decisions.TriggerExecutor;
 
 import forge.LobbyPlayer;
@@ -12,7 +11,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerQuestion;
+import forge.rl.decisions.TriggerRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -163,12 +162,12 @@ public class SimultaneousEtbTest {
             int[] position = {0};
             int[] executions = {0};
             var callback = new IPlayerDecisionCallback() {
-                @Override public List<Integer> choose(Map<String, Object> request) {
-                    assertEquals(request, recording.requests.get(position[0]));
+                @Override public List<Integer> choose(Map<String, Object> req) {
+                    assertEquals(req, recording.requests.get(position[0]));
                     return recording.answers.get(position[0]++);
                 }
-                @Override public void executed(Map<String, Object> result) {
-                    assertEquals(result, recording.execution); executions[0]++;
+                @Override public void executed(Map<String, Object> data) {
+                    assertEquals(data, recording.execution); executions[0]++;
                 }
             };
             var replay = fixture(new LobbyPlayerRl("first", callback), mixed);
@@ -205,11 +204,11 @@ public class SimultaneousEtbTest {
                     ((WrappedAbility) wrappers.get(0)).getWrappedAbility().copy(), null);
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerQuestion(f.player(), view, wrappers);
-            assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));
+            var request = new TriggerRequest(f.player(), wrappers);
+            assertThrows(IllegalStateException.class, () -> request.encode( null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
-            assertEquals(new TriggerRecorder().encode(request, null), answer);
+            assertEquals(request.encode( null), answer);
             var stack = new ArrayList<SpellAbility>();
             f.game().getStack().forEach(entry -> stack.add(entry.getSpellAbility()));
             assertSame(stack.get(0), wrappers.get(answer.get(1)));
@@ -267,10 +266,10 @@ public class SimultaneousEtbTest {
             inner.getMapParams().put(api == ApiType.Draw ? "NumCards" : "LifeAmount", "2");
             inner.getMapParams().put("Defined", "You");
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerQuestion(f.player(), view, List.of(wrapper));
+            var request = new TriggerRequest(f.player(), List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
-            assertEquals(new TriggerRecorder().encode(request, null), List.of(0));
-            var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
+            assertEquals(request.encode(0), List.of(0));
+            var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), req -> {
                 throw new AssertionError("Automatic effect requested another decision");
             });
             f.player().dangerouslySetController(controller);

@@ -193,13 +193,13 @@ public class ApnapEtbTest {
                 assertEquals(kinds.subList(0, 2), List.of("trigger_prepare", "trigger_prepare"));
                 assertEquals(Collections.frequency(kinds, "trigger_prepare"), 2);
                 int[] position = {0};
-                var replay = fixture(new LobbyPlayerRl("first", request -> {
-                    assertEquals(request, recording.requests.get(position[0]));
+                var replay = fixture(new LobbyPlayerRl("first", req -> {
+                    assertEquals(req, recording.requests.get(position[0]));
                     return recording.answers.get(position[0]++);
                 }), counts, active);
                 Player opponent = replay.base().game().getPlayers().get(1);
-                opponent.dangerouslySetController(new PlayerControllerRl(replay.base().game(), opponent, new LobbyPlayerAi("second", null), request -> {
-                    assertEquals(request, recording.requests.get(position[0]));
+                opponent.dangerouslySetController(new PlayerControllerRl(replay.base().game(), opponent, new LobbyPlayerAi("second", null), req -> {
+                    assertEquals(req, recording.requests.get(position[0]));
                     return recording.answers.get(position[0]++);
                 }));
                 var applied = run(replay);
@@ -226,17 +226,18 @@ public class ApnapEtbTest {
                         boolean fails = seat == failing;
                         if (teacher) {
                             var callback = new IDecisionRecordCallback() {
-                                @Override public void before(Map<String, Object> request) {
+                                @Override public void before(Map<String, Object> data) {
                                     if (fails) { throw failure; }
-                                    recorded.before(request);
+                                    recorded.before(data);
                                 }
-                                @Override public void after(List<Integer> answer) { recorded.after(answer); }
+                                @Override public void after(List<Integer> result) { recorded.after(result); }
                             };
                             player.dangerouslySetController(new PlayerControllerTeacher(game, player, new LobbyPlayerAi(player.getName(), null), callback));
                         } else {
-                            player.dangerouslySetController(new PlayerControllerRl(game, player, new LobbyPlayerAi(player.getName(), null), request -> {
+                            player.dangerouslySetController(new PlayerControllerRl(game, player, new LobbyPlayerAi(player.getName(), null), req -> {
                                 if (fails) { throw failure; }
-                                return ((Map<?, ?>) request.get("question")).get("kind").equals("trigger_prepare") ? List.of(0, 1) : List.of(0);
+                                var data = (Map<?, ?>) req.get("question");
+                                return data.get("kind").equals("trigger_prepare") ? List.of(0, 1) : List.of(0);
                             }));
                         }
                     }

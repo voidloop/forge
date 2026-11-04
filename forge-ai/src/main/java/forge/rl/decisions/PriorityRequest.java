@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Ordinary priority: bind native variants before choosing, execute through Forge afterward. */
-public final class PriorityQuestion implements DecisionRequest {
+public final class PriorityRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Player player;
     final List<Choice> bindings = new ArrayList<>();
@@ -75,7 +75,7 @@ public final class PriorityQuestion implements DecisionRequest {
     }
 
     private static boolean hasOrdinaryCardAbilities(Card card) {
-        return TriggerQuestion.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
+        return TriggerRequest.hasSupportedTriggers(card) && card.getReplacementEffects().isEmpty()
                 && (card.isCreature() || card.getKeywords().isEmpty() && card.getStaticAbilities().isEmpty())
                 && card.getSpellAbilities().size() == 1;
     }
@@ -120,49 +120,54 @@ public final class PriorityQuestion implements DecisionRequest {
     }
 
     private static boolean isSupportedStackAbility(SpellAbility ability) {
-        return TriggerQuestion.isSupportedWrapper(ability)
+        return TriggerRequest.isSupportedWrapper(ability)
                 || ability.isSpell() && ability.getSubAbility() == null
                 && (ability.getApi() == ApiType.PermanentCreature && !ability.usesTargeting()
                 || ability.getApi() == ApiType.DealDamage && ability.usesTargeting());
     }
 
-    public PriorityQuestion(Player player, StateReader view) {
+    public PriorityRequest(Player player) {
         this.player = player;
         requireContext(player);
         List<Map<String, Object>> items = new ArrayList<>();
         items.add(Map.of("type", "pass"));
         List<Card> cards = new ArrayList<>(player.getCardsIn(ZoneType.Hand));
         cards.addAll(player.getCardsIn(ZoneType.Battlefield));
-        for (Card card : cards) {
-            for (SpellAbility sa : card.getSpellAbilities()) {
-                Player previous = sa.getActivatingPlayer();
-                boolean playable;
-                List<GameEntity> targets;
-                sa.setActivatingPlayer(player);
-                try {
-                    playable = sa.canPlay();
-                    targets = playable && sa.usesTargeting()
-                            ? List.copyOf(sa.getTargetRestrictions().getAllCandidates(sa)) : null;
+        try (var view = new StateReader(player, 0L)) {
+            for (Card card : cards) {
+                for (SpellAbility sa : card.getSpellAbilities()) {
+                    Player previous = sa.getActivatingPlayer();
+                    boolean playable;
+                    List<GameEntity> targets;
+                    sa.setActivatingPlayer(player);
+                    try {
+                        playable = sa.canPlay();
+                        targets = playable && sa.usesTargeting()
+                                ? List.copyOf(sa.getTargetRestrictions().getAllCandidates(sa)) : null;
+                    } finally {
+                        sa.setActivatingPlayer(previous);
+                    }
+                    if (!playable) {
+                        continue;
+                    }
+                    String type = sa.isLandAbility() ? "play_land" : sa.isManaAbility() ? "activate_mana" : "cast_spell";
+                    int variant = card.getSpellAbilities().indexOf(sa);
+                    if (hasUnsupportedTargetDomain(targets)) {
+                        throw new UnsupportedOperationException("Ordinary priority target domain");
+                    }
+                    bindings.add(new Choice(sa, card, type, variant, targets));
+                    Map<String, Object> item = new LinkedHashMap<>(Map.of("type", type, "name", card.getName(),
+                            "zone", card.getZone().getZoneType().name(), "key", view.reference(card), "ability", variant));
+                    if (targets != null) {
+                        item.put("targets", targets.stream().map(target -> Map.of("key", view.reference(target),
+                                "name", target.getName(), "type", target instanceof Player ? "player" : "card")).toList());
+                    }
+                    items.add(Map.copyOf(item));
                 }
-                finally { sa.setActivatingPlayer(previous); }
-                if (!playable) { continue; }
-                String type = sa.isLandAbility() ? "play_land" : sa.isManaAbility() ? "activate_mana" : "cast_spell";
-                int variant = card.getSpellAbilities().indexOf(sa);
-                if (hasUnsupportedTargetDomain(targets)) {
-                    throw new UnsupportedOperationException("Ordinary priority target domain");
-                }
-                bindings.add(new Choice(sa, card, type, variant, targets));
-                Map<String, Object> item = new LinkedHashMap<>(Map.of("type", type, "name", card.getName(),
-                        "zone", card.getZone().getZoneType().name(), "key", view.reference(card), "ability", variant));
-                if (targets != null) {
-                    item.put("targets", targets.stream().map(target -> Map.of("key", view.reference(target),
-                            "name", target.getName(), "type", target instanceof Player ? "player" : "card")).toList());
-                }
-                items.add(Map.copyOf(item));
             }
+            data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority",
+                    "scope", "ordinary_lands_creatures_mana", "items", List.copyOf(items)));
         }
-        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority",
-                "scope", "ordinary_lands_creatures_mana", "items", List.copyOf(items)));
     }
 
     Choice validate(List<Integer> answer) {
@@ -346,6 +351,37 @@ public final class PriorityQuestion implements DecisionRequest {
     private static boolean hasInvalidTargetAnswer(List<Integer> answer, Choice choice) {
         return answer.size() != (choice.targets == null ? 1 : 2)
                 || choice.targets != null && (answer.get(1) < -1 || answer.get(1) >= choice.targets.size());
+    }
+
+    @Override public List<Integer> encode(Object answer) {
+        @SuppressWarnings("unchecked")
+        List<SpellAbility> selected = (List<SpellAbility>) answer;
+        if (selected == null) { return List.of(0); }
+        if (selected.size() == 1) {
+            for (int i = 0; i < bindings.size(); i++) {
+                Choice choice = bindings.get(i);
+                if (isChosenAbility(choice, selected)) {
+                    return encodeChoice(choice, i);
+                }
+            }
+        }
+        throw new IllegalArgumentException("Native priority response outside exact bindings");
+    }
+
+    private boolean isChosenAbility(Choice choice, List<SpellAbility> selected) {
+        return selected.get(0) == choice.ability && selected.get(0).getHostCard() == choice.card;
+    }
+
+    private List<Integer> encodeChoice(Choice choice, int index) {
+        if (choice.targets == null) { return List.of(index + 1); }
+        if (choice.ability.getTargets().size() == 1) {
+            for (int j = 0; j < choice.targets.size(); j++) {
+                if (choice.ability.getTargets().get(0) == choice.targets.get(j)) {
+                    return List.of(index + 1, j);
+                }
+            }
+        }
+        throw new IllegalArgumentException("Native final target outside previous bindings");
     }
 
     @Override public Map<String, Object> data() { return data; }

@@ -1,19 +1,19 @@
 package forge.rl;
 
-import forge.rl.decisions.PriorityQuestion;
-import forge.rl.decisions.AttackersQuestion;
-import forge.rl.decisions.BlockersQuestion;
-import forge.rl.decisions.CombatDamageQuestion;
-import forge.rl.decisions.CombatGraveyardQuestion;
-import forge.rl.decisions.CleanupQuestions;
-import forge.rl.decisions.SelectionQuestion;
-import forge.rl.decisions.ConfirmActionQuestion;
+import forge.rl.decisions.PriorityRequest;
+import forge.rl.decisions.AttackersRequest;
+import forge.rl.decisions.BlockersRequest;
+import forge.rl.decisions.CombatDamageRequest;
+import forge.rl.decisions.CombatGraveyardRequest;
+import forge.rl.decisions.CleanupRequests;
+import forge.rl.decisions.SelectionRequest;
+import forge.rl.decisions.ConfirmActionRequest;
 import forge.rl.decisions.ConfirmActionExecutor;
-import forge.rl.decisions.ManaQuestion;
-import forge.rl.decisions.ManaPaymentQuestion;
-import forge.rl.decisions.MulliganQuestions;
-import forge.rl.decisions.StartingPlayerQuestion;
-import forge.rl.decisions.TriggerQuestion;
+import forge.rl.decisions.ManaRequest;
+import forge.rl.decisions.ManaPaymentRequest;
+import forge.rl.decisions.MulliganRequests;
+import forge.rl.decisions.StartingPlayerRequest;
+import forge.rl.decisions.TriggerRequest;
 import forge.rl.decisions.SelectionExecutor;
 import forge.rl.decisions.TriggerExecutor;
 import forge.rl.decisions.CombatDamageExecutor;
@@ -73,25 +73,26 @@ import forge.game.ability.effects.CharmEffect;
 /** Independent client controller. Unsupported requests terminate this session. */
 public final class PlayerControllerRl extends PlayerController {
     private final IPlayerDecisionCallback callback;
-    private final StateReader observation;
     private boolean observationStarted;
     private boolean confirming;
     private boolean callbackActive;
     private RuntimeException failure;
     private Prepared active;
-    private PriorityQuestion.Choice pendingPriority;
-    private PriorityQuestion.Choice activePriority;
-    private ManaQuestion.Choice pendingMana;
-    private ManaQuestion.Choice activeMana;
-    private ManaPaymentQuestion payment;
+    private PriorityRequest.Choice pendingPriority;
+    private PriorityRequest.Choice activePriority;
+    private ManaRequest.Choice pendingMana;
+    private ManaRequest.Choice activeMana;
+    private ManaPaymentRequest payment;
     private SpellAbility paymentRoot;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
 
-    private List<Integer> answer(Map<String, Object> options) {
+    private List<Integer> answer(Map<String, Object> question) {
         checkActive();
         try {
             startObservation();
-            return response(Map.of("state", observation.snapshot(), "question", options));
+            try (var view = new StateReader(player, 0L)) {
+                return response(Map.of("state", view.snapshot(), "question", question));
+            }
         } catch (RuntimeException error) { throw stop(error); }
     }
 
@@ -127,7 +128,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            SelectionQuestion<T> request = new SelectionQuestion<>(player, observation, kind, options, title, min, max, optional, reveal, related, params);
+            SelectionRequest<T> request = new SelectionRequest<>(player, kind, options, title, min, max, optional, reveal, related, params);
             return new SelectionExecutor<>(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -148,8 +149,6 @@ public final class PlayerControllerRl extends PlayerController {
     public PlayerControllerRl(Game game, Player player, LobbyPlayer lobby, IPlayerDecisionCallback callback) {
         super(game, player, lobby);
         this.callback = Objects.requireNonNull(callback);
-        // Private replay setup: observable aliases follow the same visible history, never engine RNG.
-        this.observation = new StateReader(player, 0L);
     }
 
     public void startObservation() {
@@ -157,8 +156,8 @@ public final class PlayerControllerRl extends PlayerController {
         if (!observationStarted) {
             if (callbackActive) { throw stop(new IllegalStateException("Nested client observation")); }
             callbackActive = true;
-            try {
-                callback.observe(observation);
+            try (var view = new StateReader(player, 0L)) {
+                callback.observe(view);
                 checkActive();
                 observationStarted = true;
             } catch (RuntimeException error) { throw stop(error); }
@@ -169,7 +168,6 @@ public final class PlayerControllerRl extends PlayerController {
     public void closeObservation() {
         try { callback.close(); }
         finally {
-            observation.close();
             if (failure == null) { failure = new IllegalStateException("Controller observation is closed"); }
         }
     }
@@ -199,7 +197,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) {
         checkActive();
         try {
-            TriggerQuestion.requireResolution(player, effectSA, mayChoseNewTargets);
+            TriggerRequest.requireResolution(player, effectSA, mayChoseNewTargets);
             AbilityUtils.resolve(effectSA);
         }
         catch (RuntimeException error) { throw stop(error); }
@@ -209,7 +207,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new TriggerQuestion(player, observation, activePlayerSAs);
+            var request = new TriggerRequest(player, activePlayerSAs);
             new TriggerExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -227,39 +225,46 @@ public final class PlayerControllerRl extends PlayerController {
             throw unsupported("playSaFromPlayEffect shape");
         }
         Card source = tgtSA.getHostCard();
-        if (source.getGame() != getGame() || !observation.canIdentify(source.getView())) {
-            throw unsupported("unobservable or foreign modal source");
-        }
-        List<AbilitySub> modes = CharmEffect.makePossibleOptions(tgtSA);
-        List<SpellAbility> targets = new ArrayList<>();
-        getGame().getStack().forEach(item -> targets.add(item.getSpellAbility()));
-        List<Integer> values = answer(Map.of("kind", "mode_target", "optional", true,
-                "source", observation.reference(source),
-                "modes", modes.stream().map(mode -> mode.getParamOrDefault("SpellDescription", "")).toList(),
-                "targets", targets.stream().map(target -> Map.of("name", target.getHostCard().isFaceDown()
-                        ? "Face-down spell" : target.getHostCard().getName(), "key", observation.reference(target))).toList()));
-        if (values.isEmpty()) { return false; }
-        if (values.size() != 2 || values.get(0) < 0 || values.get(0) >= modes.size()
-                || values.get(1) < 0 || values.get(1) >= targets.size()) {
-            throw stop(new IllegalArgumentException("Invalid mode/target indices"));
-        }
-        AbilitySub mode = modes.get(values.get(0));
-        SpellAbility target = targets.get(values.get(1));
-        if (mode.getSubAbility() != null || !mode.usesTargeting() || mode.getMinTargets() != 1
-                || mode.getMaxTargets() != 1 || mode.hasParam("TargetingPlayer") || mode.isDividedAsYouChoose()) {
-            throw unsupported("mode/target shape");
-        }
-        if (!mode.canTarget(target) || getGame().getStack().getInstanceMatchingSpellAbilityID(target) == null) {
-            throw stop(new IllegalArgumentException("Illegal or stale stack target"));
-        }
-        active = new Prepared(tgtSA, mode, target);
-        try {
-            if (!PlaySpellAbility.playSpellAbility(this, player, tgtSA)) {
-                throw new IllegalStateException("Native execution rejected the client response");
+        try (var view = new StateReader(player, 0L)) {
+            if (source.getGame() != getGame() || !view.canIdentify(source.getView())) {
+                throw unsupported("unobservable or foreign modal source");
             }
-            return true;
-        } catch (RuntimeException error) { throw stop(error); }
-        finally { active = null; }
+            List<AbilitySub> modes = CharmEffect.makePossibleOptions(tgtSA);
+            List<SpellAbility> targets = new ArrayList<>();
+            getGame().getStack().forEach(item -> targets.add(item.getSpellAbility()));
+            List<Integer> values = answer(Map.of("kind", "mode_target", "optional", true,
+                    "source", view.reference(source),
+                    "modes", modes.stream().map(mode -> mode.getParamOrDefault("SpellDescription", "")).toList(),
+                    "targets", targets.stream().map(target -> Map.of("name", target.getHostCard().isFaceDown()
+                            ? "Face-down spell" : target.getHostCard().getName(), "key", view.reference(target))).toList()));
+            if (values.isEmpty()) {
+                return false;
+            }
+            if (values.size() != 2 || values.get(0) < 0 || values.get(0) >= modes.size()
+                    || values.get(1) < 0 || values.get(1) >= targets.size()) {
+                throw stop(new IllegalArgumentException("Invalid mode/target indices"));
+            }
+            AbilitySub mode = modes.get(values.get(0));
+            SpellAbility target = targets.get(values.get(1));
+            if (mode.getSubAbility() != null || !mode.usesTargeting() || mode.getMinTargets() != 1
+                    || mode.getMaxTargets() != 1 || mode.hasParam("TargetingPlayer") || mode.isDividedAsYouChoose()) {
+                throw unsupported("mode/target shape");
+            }
+            if (!mode.canTarget(target) || getGame().getStack().getInstanceMatchingSpellAbilityID(target) == null) {
+                throw stop(new IllegalArgumentException("Illegal or stale stack target"));
+            }
+            active = new Prepared(tgtSA, mode, target);
+            try {
+                if (!PlaySpellAbility.playSpellAbility(this, player, tgtSA)) {
+                    throw new IllegalStateException("Native execution rejected the client response");
+                }
+                return true;
+            } catch (RuntimeException error) {
+                throw stop(error);
+            } finally {
+                active = null;
+            }
+        }
 
     }
     @Override public List<PaperCard> sideboard(final Deck deck, GameType gameType, String message) { throw unsupported("sideboard"); }
@@ -269,7 +274,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatDamageQuestion(player, observation, source, targets, remaining, damage, defender, overrideOrder);
+            var request = new CombatDamageRequest(player, source, targets, remaining, damage, defender, overrideOrder);
             return new CombatDamageExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -284,7 +289,9 @@ public final class PlayerControllerRl extends PlayerController {
         if (activePriority != null) {
             try {
                 // Observe Hand→Stack before native targeting cancellation silently rolls it back.
-                observation.snapshot();
+                try (var view = new StateReader(player, 0L)) {
+                    view.snapshot();
+                }
                 return new PriorityTargetExecutor(activePriority, player, currentAbility).apply();
             }
             catch (RuntimeException error) { throw stop(error); }
@@ -322,7 +329,7 @@ public final class PlayerControllerRl extends PlayerController {
             if (cannotStartConfirmation()) { throw new IllegalStateException("Previous choice has not been executed"); }
             confirming = true;
             startObservation();
-            var request = new ConfirmActionQuestion(player, observation, sa, mode, message, options, cardToShow, params);
+            var request = new ConfirmActionRequest(player, sa, mode, message, options, cardToShow, params);
             return new ConfirmActionExecutor(request, response(request.data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
         finally { confirming = false; }
@@ -341,7 +348,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new AttackersQuestion(player, observation, attacker, combat);
+            var request = new AttackersRequest(player, attacker, combat);
             new AttackersExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -349,7 +356,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new BlockersQuestion(player, observation, defender, combat);
+            var request = new BlockersRequest(player, defender, combat);
             new BlockersExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -361,8 +368,10 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void notifyOfValue(SpellAbility saSource, GameObject realtedTarget, String value) {
         checkActive();
         // Mana announcements ask no question; the resulting pool is read from native state.
-        if (saSource == null || !ManaQuestion.supported(saSource)
-                || !observation.canIdentify(saSource.getHostCard().getView())) { throw unsupported("notifyOfValue"); }
+        if (saSource == null || !ManaRequest.supported(saSource)) { return; }
+        try (var view = new StateReader(player, 0L)) {
+            if (!view.canIdentify(saSource.getHostCard().getView())) { throw unsupported("notifyOfValue"); }
+        }
     }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) { throw unsupported("arrangeForScry"); }
     @Override public ImmutablePair<CardCollection, CardCollection> arrangeForSurveil(CardCollection topN) { throw unsupported("arrangeForSurveil"); }
@@ -371,7 +380,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatGraveyardQuestion(player, observation, cards, destinationZone, source);
+            var request = new CombatGraveyardRequest(player, cards, destinationZone, source);
             return new CombatGraveyardExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -384,7 +393,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = CleanupQuestions.create(player, observation, numDiscard);
+            var request = CleanupRequests.create(player, numDiscard);
             return new CardCollection(new SelectionExecutor<>(request, response(request.data)).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -400,7 +409,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = new StartingPlayerQuestion(player, observation, isFirstGame);
+            var request = new StartingPlayerRequest(player, isFirstGame);
             return new StartingPlayerExecutor(request, response(request.data)).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -428,7 +437,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            return new MulliganKeepExecutor(response(MulliganQuestions.keep(player, observation, first, cardsToReturn).data())).apply();
+            return new MulliganKeepExecutor(response(MulliganRequests.keep(player, first, cardsToReturn).data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
@@ -438,7 +447,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = MulliganQuestions.tuck(player, observation, hand, cardsToReturn);
+            var request = MulliganRequests.tuck(player, hand, cardsToReturn);
             return new CardCollection(new SelectionExecutor<>(request, cardsToReturn == 0 ? List.of() : response(request.data)).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -449,12 +458,12 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            if (ManaQuestion.hasSource(player)) {
-                ManaQuestion request = new ManaQuestion(player, observation);
+            if (ManaRequest.hasSource(player)) {
+                ManaRequest request = new ManaRequest(player);
                 pendingMana = new ManaExecutor(request, response(request.data), player).apply();
                 return pendingMana == null ? null : List.of(pendingMana.ability);
             }
-            PriorityQuestion request = new PriorityQuestion(player, observation);
+            PriorityRequest request = new PriorityRequest(player);
             pendingPriority = new PriorityExecutor(request, response(request.data)).apply();
             return pendingPriority == null ? null : List.of(pendingPriority.ability);
         } catch (RuntimeException error) { throw stop(error); }
@@ -484,7 +493,11 @@ public final class PlayerControllerRl extends PlayerController {
             activePriority.before(player, sa);
             boolean reported = PlaySpellAbility.playSpellAbility(this, player, sa);
             activePriority.after(player, reported);
-            if (activePriority.isCast()) { callback.executed(activePriority.result(player, observation, reported)); }
+            if (activePriority.isCast()) {
+                try (var view = new StateReader(player, 0L)) {
+                    callback.executed(activePriority.result(player, view, reported));
+                }
+            }
             return reported;
         } catch (RuntimeException error) { throw stop(error); }
         finally { activePriority = null; }
@@ -514,7 +527,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             if (activeMana == null) { throw unsupported("unbound mana color"); }
-            var request = activeMana.colorRequest(player, observation, message, sa, colors);
+            var request = activeMana.colorRequest(player, message, sa, colors);
             return new ManaColorExecutor(activeMana, response(request.data())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -554,7 +567,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw unsupported("nested mana payment");
             }
             startObservation();
-            payment = new ManaPaymentQuestion(player, observation, toPay, costPartMana, sa, matrix, effect);
+            payment = new ManaPaymentRequest(player, toPay, costPartMana, sa, matrix, effect);
             paymentRoot = sa;
             if (toPay.isZero()) { return new ManaPaymentExecutor(payment, response(payment.data), new ManaCostBeingPaid(toPay)).apply(); }
             return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
@@ -565,7 +578,7 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             if (payment == null || paymentRoot != ability || effect) { throw unsupported("unbound mana payment"); }
-            ManaPaymentQuestion request = payment;
+            ManaPaymentRequest request = payment;
             payment = null;
             return new ManaPaymentExecutor(request, response(request.data), toPay).apply();
         } catch (RuntimeException error) { throw stop(error); }

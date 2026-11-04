@@ -1,6 +1,5 @@
 package forge.rl;
 
-import forge.rl.decisions.TriggerRecorder;
 
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -11,8 +10,8 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerQuestion;
-import forge.rl.decisions.PriorityQuestion;
+import forge.rl.decisions.TriggerRequest;
+import forge.rl.decisions.PriorityRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -129,7 +128,7 @@ public class HelpfulHunterTest {
         var view = new StateReader(f.player(), 0L);
         var trigger = f.spell().getHostCard().getTriggers().get(0);
         var originalAbility = trigger.getOverridingAbility();
-        new PriorityQuestion(f.player(), view);
+        new PriorityRequest(f.player());
         assertSame(trigger.getOverridingAbility(), originalAbility);
         view.close();
         var probe = new Probe(f.player());
@@ -143,9 +142,9 @@ public class HelpfulHunterTest {
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
         Map<String, Object> execution;
-        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
-        @Override public void after(List<Integer> answer) {
-            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
+        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
+        @Override public void after(List<Integer> result) {
+            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
         }
         @Override public void executed(Map<String, Object> result) { assertNull(execution); execution = result; }
     }
@@ -176,12 +175,12 @@ public class HelpfulHunterTest {
         int[] position = {0};
         int[] executions = {0};
         var callback = new IPlayerDecisionCallback() {
-            @Override public List<Integer> choose(Map<String, Object> request) {
-                assertEquals(request, recording.requests.get(position[0]));
+            @Override public List<Integer> choose(Map<String, Object> req) {
+                assertEquals(req, recording.requests.get(position[0]));
                 return recording.answers.get(position[0]++);
             }
-            @Override public void executed(Map<String, Object> result) {
-                assertEquals(result, recording.execution); executions[0]++;
+            @Override public void executed(Map<String, Object> data) {
+                assertEquals(data, recording.execution); executions[0]++;
             }
         };
         var replay = fixture(new LobbyPlayerRl("first", callback));
@@ -216,7 +215,7 @@ public class HelpfulHunterTest {
             controller.closeObservation();
         }
         var combat = AttackersTest.fixture(new LobbyPlayerRl("first", request -> {
-            throw new AssertionError("Unexpected combat question");
+            throw new AssertionError("Unexpected combat request");
         }), false);
         Card hunter = OriginalCompositeChoice.add(combat.game(), combat.actor(), "Helpful Hunter");
         combat.actor().getZone(ZoneType.Hand).remove(hunter);
@@ -234,10 +233,10 @@ public class HelpfulHunterTest {
         var wrapper = (WrappedAbility) f.game().getStack().peekAbility();
         f.game().getStack().clear();
         var view = new StateReader(f.player(), 0L);
-        var request = new TriggerQuestion(f.player(), view, List.of(wrapper));
+        var request = new TriggerRequest(f.player(), List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
-        assertThrows(IllegalStateException.class, () -> new TriggerRecorder().encode(request, null));
+        assertThrows(IllegalStateException.class, () -> request.encode( null));
         Card source = wrapper.getHostCard();
         var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
             f.player().getZone(ZoneType.Battlefield).remove(source);

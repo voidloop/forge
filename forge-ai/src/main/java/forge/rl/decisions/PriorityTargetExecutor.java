@@ -5,7 +5,7 @@ import forge.game.card.Card;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 
-public record PriorityTargetExecutor(PriorityQuestion.Choice request, Player player, SpellAbility selected) implements DecisionExecutor<Boolean> {
+public record PriorityTargetExecutor(PriorityRequest.Choice request, Player player, SpellAbility selected) implements DecisionExecutor<Boolean> {
     @Override public Boolean apply() {
         if (isUnboundTargetRequest()) {
             throw new IllegalArgumentException("Unbound ordinary target request");

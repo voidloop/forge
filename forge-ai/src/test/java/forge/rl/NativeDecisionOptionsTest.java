@@ -16,8 +16,7 @@ import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.util.collect.FCollection;
-import forge.rl.decisions.SelectionQuestion;
-import forge.rl.decisions.SelectionRecorder;
+import forge.rl.decisions.SelectionRequest;
 import forge.rl.decisions.SelectionExecutor;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
@@ -133,18 +132,18 @@ public class NativeDecisionOptionsTest {
         assertThrows(IllegalArgumentException.class, () -> partial.actor().getController().chooseCardsForEffect(
                 new CardCollection(List.of(partial.first(), partial.second())), null, "optional pair", 2, 2, true, null));
 
-        Fixture shortList = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
-            assertEquals(request.get("min"), 1);
-            assertEquals(request.get("max"), 1);
+        Fixture shortList = fixture(req -> {
+            Map<?, ?> data = (Map<?, ?>) req.get("question");
+            assertEquals(data.get("min"), 1);
+            assertEquals(data.get("max"), 1);
             return List.of(0);
         });
         var chosen = shortList.actor().getController().chooseCardsForEffect(new CardCollection(shortList.first()), null, "available", 3, 4, false, null);
         assertSame(chosen.getFirst(), shortList.first());
-        Fixture empty = fixture(envelope -> {
-            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
-            assertEquals(request.get("min"), 0);
-            assertEquals(request.get("max"), 0);
+        Fixture empty = fixture(req -> {
+            Map<?, ?> data = (Map<?, ?>) req.get("question");
+            assertEquals(data.get("min"), 0);
+            assertEquals(data.get("max"), 0);
             return List.of();
         });
         assertNull(empty.actor().getController().chooseSingleEntityForEffect(new FCollection<Card>(), null, "empty", false, null));
@@ -174,23 +173,23 @@ public class NativeDecisionOptionsTest {
         var options = new CardCollection(List.of(fixture.first(), other));
         var view = new StateReader(fixture.actor(), 0L);
         try {
-            var request = new SelectionQuestion<>(fixture.actor(), view, "cards", options, "two bears", 2, 2,
+            var request = new SelectionRequest<>(fixture.actor(), "cards", options, "two bears", 2, 2,
                     false, null, null, null);
-            var items = (List<?>) ((Map<?, ?>) request.data.get("question")).get("items");
+            var items = (List<?>) ((Map<?, ?>) request.data().get("question")).get("items");
             assertEquals(((Map<?, ?>) items.get(0)).get("name"), ((Map<?, ?>) items.get(1)).get("name"));
             assertNotEquals(((Map<?, ?>) items.get(0)).get("key"), ((Map<?, ?>) items.get(1)).get("key"));
-            String saved = request.data.toString();
+            String saved = request.data().toString();
             options.clear();
             fixture.first().setTapped(true);
-            List<Integer> answer = new SelectionRecorder<Card>().encode(request, List.of(other, fixture.first()));
+            List<Integer> answer = request.encode(List.of(other, fixture.first()));
             assertEquals(answer, List.of(1, 0));
             var applied = new SelectionExecutor<>(request, answer).apply();
             assertSame(applied.get(0), other);
             assertSame(applied.get(1), fixture.first());
-            assertEquals(request.data.toString(), saved, "Native mutations changed a detached question");
+            assertEquals(request.data().toString(), saved, "Native mutations changed a detached request");
             Fixture foreign = fixture(new forge.ai.LobbyPlayerAi("first", null));
             assertThrows(IllegalArgumentException.class,
-                    () -> new SelectionRecorder<Card>().encode(request, List.of(foreign.first(), other)));
+                    () -> request.encode(List.of(foreign.first(), other)));
         } finally { view.close(); }
     }
 

@@ -12,8 +12,12 @@ import java.util.List;
 import java.util.Map;
 
 /** Single-hand London decisions; returned card order is native bottom insertion order. */
-public final class MulliganQuestions {
-    public record Keep(Map<String, Object> data) implements DecisionRequest { }
+public final class MulliganRequests {
+    public record Keep(Map<String, Object> data) implements DecisionRequest {
+        @Override public List<Integer> encode(Object answer) {
+            return List.of((Boolean) answer ? 1 : 0);
+        }
+    }
 
     static void require(Player player) {
         if (isOutsideLondonDuel(player)) {
@@ -21,22 +25,24 @@ public final class MulliganQuestions {
         }
     }
 
-    public static Keep keep(Player player, StateReader view, Player first, int count) {
+    public static Keep keep(Player player, Player first, int count) {
         require(player);
         if (hasInvalidKeepContext(player, first, count)) {
             throw new IllegalArgumentException("Invalid native mulligan context");
         }
-        return new Keep(Map.of("state", view.snapshot(), "question", Map.of("kind", "mulligan_keep",
-                "firstPlayer", view.reference(first), "cardsToReturn", count,
-                "items", List.of("mulligan", "keep"))));
+        try (var view = new StateReader(player, 0L)) {
+            return new Keep(Map.of("state", view.snapshot(), "question", Map.of("kind", "mulligan_keep",
+                    "firstPlayer", view.reference(first), "cardsToReturn", count,
+                    "items", List.of("mulligan", "keep"))));
+        }
     }
 
-    public static SelectionQuestion<Card> tuck(Player player, StateReader view, CardCollectionView hand, int count) {
+    public static SelectionRequest<Card> tuck(Player player, CardCollectionView hand, int count) {
         require(player);
         if (hasInvalidTuckContext(player, hand, count)) {
             throw new UnsupportedOperationException("Invalid native London tuck count or hand");
         }
-        return new SelectionQuestion<>(player, view, "mulligan_tuck", hand, "", count, count,
+        return new SelectionRequest<>(player, "mulligan_tuck", hand, "", count, count,
                 false, null, null, null);
     }
 

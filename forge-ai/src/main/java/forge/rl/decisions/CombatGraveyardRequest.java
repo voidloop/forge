@@ -12,15 +12,15 @@ import java.util.List;
 import java.util.Map;
 
 /** Owner's order for simultaneous vanilla combat deaths, before the native zone moves. */
-public final class CombatGraveyardQuestion implements DecisionRequest {
+public final class CombatGraveyardRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
     private final List<Card> cards;
-    final SelectionQuestion<Card> selection;
+    final SelectionRequest<Card> selection;
 
-    public CombatGraveyardQuestion(Player player, StateReader view, CardCollectionView cards,
-            ZoneType destination, SpellAbility source) {
+    public CombatGraveyardRequest(Player player, CardCollectionView cards,
+                                  ZoneType destination, SpellAbility source) {
         this.player = player;
         this.combat = player.getGame().getCombat();
         this.cards = List.copyOf(cards);
@@ -28,9 +28,9 @@ public final class CombatGraveyardQuestion implements DecisionRequest {
             throw new UnsupportedOperationException("Only simultaneous combat graveyard ordering");
         }
         requireContext();
-        selection = new SelectionQuestion<>(player, view, "combat_graveyard_order", cards,
+        selection = new SelectionRequest<>(player, "combat_graveyard_order", cards,
                 "Order simultaneous combat deaths into graveyard", cards.size(), cards.size(), false, null, null, null);
-        data = selection.data;
+        data = selection.data();
     }
 
     private static boolean isSimultaneousCombatGraveyardOrder(CardCollectionView cards,
@@ -42,7 +42,7 @@ public final class CombatGraveyardQuestion implements DecisionRequest {
         if (player.getGame().getCombat() != combat) {
             throw new IllegalArgumentException("Combat changed during graveyard ordering");
         }
-        CombatDamageQuestion.requireScope(player);
+        CombatDamageRequest.requireScope(player);
         for (Card card : cards) {
             if (!isBoundSimultaneousCombatDeath(card)) {
                 throw new IllegalArgumentException("Unbound or stale simultaneous combat death");
@@ -56,6 +56,11 @@ public final class CombatGraveyardQuestion implements DecisionRequest {
                 && card.isCreature() && card.getDamage() >= card.getNetToughness();
     }
 
+
+    @Override public List<Integer> encode(Object answer) {
+        requireContext();
+        return selection.encode(answer);
+    }
 
     @Override public Map<String, Object> data() { return data; }
 }

@@ -3,7 +3,7 @@ package forge.rl;
 import java.util.List;
 import java.util.Map;
 
-/** Internal bridge: state/options facts in, unwrapped answer integers out; bindings stay in Java. */
+/** Internal bridge: state/question facts in, unwrapped answer integers out; bindings stay in Java. */
 @FunctionalInterface
 public interface IPlayerDecisionCallback {
     List<Integer> choose(Map<String, Object> request);

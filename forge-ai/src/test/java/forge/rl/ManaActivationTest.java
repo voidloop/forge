@@ -102,9 +102,9 @@ public class ManaActivationTest {
         final List<Entry> entries = new ArrayList<>();
         Map<String, Object> pending;
         @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
-        @Override public void after(List<Integer> answer) {
+        @Override public void after(List<Integer> result) {
             assertNotNull(pending);
-            entries.add(new Entry(pending, List.copyOf(answer)));
+            entries.add(new Entry(pending, List.copyOf(result)));
             pending = null;
         }
     }
@@ -144,9 +144,9 @@ public class ManaActivationTest {
                 .anyMatch(item -> Boolean.TRUE.equals(((Map<?, ?>) item).get("tapped"))));
         MyRandom.setRandom(new Random(0));
         int[] cursor = {0};
-        Fixture replay = fixture(new LobbyPlayerRl("first", request -> {
+        Fixture replay = fixture(new LobbyPlayerRl("first", req -> {
             Entry entry = recording.entries.get(cursor[0]++);
-            assertEquals(request, entry.request(), "Mana request diverged");
+            assertEquals(req, entry.request(), "Mana request diverged");
             return entry.answer();
         }));
         assertNotSame(replay.land(), teacher.land());
@@ -160,10 +160,10 @@ public class ManaActivationTest {
         for (int colorIndex = 0; colorIndex < 2; colorIndex++) {
             final int desired = colorIndex;
             List<Map<String, Object>> requests = new ArrayList<>();
-            Fixture fixture = fixture(new LobbyPlayerRl("first", request -> {
-                requests.add(request);
-                var options = (Map<?, ?>) request.get("question");
-                return List.of(options.get("kind").equals("mana_color") ? desired : requests.size() == 1 ? 0 : 1);
+            Fixture fixture = fixture(new LobbyPlayerRl("first", req -> {
+                requests.add(req);
+                var data = (Map<?, ?>) req.get("question");
+                return List.of(data.get("kind").equals("mana_color") ? desired : requests.size() == 1 ? 0 : 1);
             }));
             var controller = fixture.player().getController();
             assertNull(controller.chooseSpellAbilityToPlay());
@@ -188,9 +188,9 @@ public class ManaActivationTest {
                 .chooseColor("unbound", root, ColorSet.fromNames("U", "G")));
         assertThrows(UnsupportedOperationException.class, () -> unbound.player().getController().chooseSpellAbilityToPlay());
         for (List<Integer> invalid : List.of(List.<Integer>of(), List.of(-1), List.of(2), List.of(0, 1))) {
-            Fixture bad = fixture(new LobbyPlayerRl("first", request -> {
-                var options = (Map<?, ?>) request.get("question");
-                return options.get("kind").equals("mana_color") ? invalid : List.of(1);
+            Fixture bad = fixture(new LobbyPlayerRl("first", req -> {
+                var data = (Map<?, ?>) req.get("question");
+                return data.get("kind").equals("mana_color") ? invalid : List.of(1);
             }));
             var controller = bad.player().getController();
             var selected = controller.chooseSpellAbilityToPlay().get(0);
@@ -217,9 +217,9 @@ public class ManaActivationTest {
         assertEquals(planned.player().getManaPool().totalMana(), 0);
         ((PlayerControllerRl) plannedController).closeObservation();
 
-        Fixture repeated = fixture(new LobbyPlayerRl("first", request -> {
-            var options = (Map<?, ?>) request.get("question");
-            return options.get("kind").equals("mana_color") ? List.of(0) : List.of(1);
+        Fixture repeated = fixture(new LobbyPlayerRl("first", req -> {
+            var data = (Map<?, ?>) req.get("question");
+            return data.get("kind").equals("mana_color") ? List.of(0) : List.of(1);
         }));
         var repeatedController = repeated.player().getController();
         var repeatedAbility = repeatedController.chooseSpellAbilityToPlay().get(0);

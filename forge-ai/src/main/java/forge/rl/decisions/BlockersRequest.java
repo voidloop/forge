@@ -13,7 +13,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final blocker/attacker assignments, bound before the native void decision. */
-public final class BlockersQuestion implements DecisionRequest {
+public final class BlockersRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -33,8 +33,8 @@ public final class BlockersQuestion implements DecisionRequest {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Blocker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
-            else { PriorityQuestion.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 
@@ -49,34 +49,36 @@ public final class BlockersQuestion implements DecisionRequest {
         }
     }
 
-    public BlockersQuestion(Player player, StateReader view, Player defender, Combat combat) {
+    public BlockersRequest(Player player, Player defender, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
         if (hasUnboundDeclaration(defender)) {
             throw new IllegalArgumentException("Unbound or nonempty blocker declaration");
         }
-        attackers = List.copyOf(combat.getAttackers());
-        requireAttackers();
-        var items = new ArrayList<Map<String, Object>>();
-        for (Card card : player.getCreaturesInPlay()) {
-            var legal = new ArrayList<Integer>();
-            for (int i = 0; i < attackers.size(); i++) {
-                if (CombatUtil.canBlock(attackers.get(i), card, combat)) {
-                    if (CombatUtil.getBlockCost(player.getGame(), card, attackers.get(i)) != null) {
-                        throw new UnsupportedOperationException("Blocker declaration cost");
+        try (var view = new StateReader(player, 0L)) {
+            attackers = List.copyOf(combat.getAttackers());
+            requireAttackers();
+            var items = new ArrayList<Map<String, Object>>();
+            for (Card card : player.getCreaturesInPlay()) {
+                var legal = new ArrayList<Integer>();
+                for (int i = 0; i < attackers.size(); i++) {
+                    if (CombatUtil.canBlock(attackers.get(i), card, combat)) {
+                        if (CombatUtil.getBlockCost(player.getGame(), card, attackers.get(i)) != null) {
+                            throw new UnsupportedOperationException("Blocker declaration cost");
+                        }
+                        legal.add(i);
                     }
-                    legal.add(i);
+                }
+                if (!legal.isEmpty()) {
+                    blockers.add(card);
+                    items.add(Map.of("key", view.reference(card), "name", card.getName(), "attackers", List.copyOf(legal)));
                 }
             }
-            if (!legal.isEmpty()) {
-                blockers.add(card);
-                items.add(Map.of("key", view.reference(card), "name", card.getName(), "attackers", List.copyOf(legal)));
-            }
+            data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_blockers",
+                    "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
+                    "attackers", attackers.stream().map(a -> Map.of("key", view.reference(a), "name", a.getName())).toList()));
         }
-        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_blockers",
-                "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
-                "attackers", attackers.stream().map(a -> Map.of("key", view.reference(a), "name", a.getName())).toList()));
     }
 
     void validate(List<Integer> answer) {
@@ -148,6 +150,22 @@ public final class BlockersQuestion implements DecisionRequest {
         return !firstBlock || player.getGame().getCardState(card, null) != card
                 || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
                 || !CombatUtil.canBlock(attackers.get(a), card);
+    }
+
+    @Override public List<Integer> encode(Object answer) {
+        requireContext(); requireAttackers();
+        var result = new ArrayList<Integer>();
+        for (int a = 0; a < attackers.size(); a++) {
+            for (Card card : combat.getBlockers(attackers.get(a))) {
+                int b = blockers.indexOf(card);
+                if (b < 0 || blockers.get(b) != card) {
+                    throw new IllegalArgumentException("Final block declaration outside exact bindings");
+                }
+                result.add(b); result.add(a);
+            }
+        }
+        validate(result); validateNative();
+        return List.copyOf(result);
     }
 
     @Override public Map<String, Object> data() { return data; }

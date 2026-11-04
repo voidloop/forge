@@ -15,7 +15,7 @@ import forge.game.zone.ZoneType;
 import java.util.*;
 
 /** Final native damage map; target bindings are captured before the choice. */
-public final class CombatDamageQuestion implements DecisionRequest {
+public final class CombatDamageRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     private final Combat combat;
@@ -25,8 +25,8 @@ public final class CombatDamageQuestion implements DecisionRequest {
     private final CardCollectionView offered;
     private final int damage;
 
-    public CombatDamageQuestion(Player player, StateReader view, Card source, CardCollectionView targets,
-            CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
+    public CombatDamageRequest(Player player, Card source, CardCollectionView targets,
+                               CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
         this.player = player;
         this.combat = Objects.requireNonNull(player.getGame().getCombat(), "No combat for damage assignment");
         this.source = Objects.requireNonNull(source);
@@ -38,10 +38,12 @@ public final class CombatDamageQuestion implements DecisionRequest {
         if (hasInvalidAssignmentArguments(remaining, overrideOrder)) {
             throw new IllegalArgumentException("Invalid native damage assignment arguments");
         }
-        data = Map.of("state", view.snapshot(), "question", StateReader.data(
-                "kind", "combat_damage", "scope", "ordinary_vanilla_duel", "source", view.reference(source),
-                "defender", defender == null ? null : view.reference(defender), "damage", damage,
-                "items", targets.stream().map(c -> Map.of("key", view.reference(c), "name", c.getName())).toList()));
+        try (var view = new StateReader(player, 0L)) {
+            data = Map.of("state", view.snapshot(), "question", StateReader.data(
+                    "kind", "combat_damage", "scope", "ordinary_vanilla_duel", "source", view.reference(source),
+                    "defender", defender == null ? null : view.reference(defender), "damage", damage,
+                    "items", targets.stream().map(c -> Map.of("key", view.reference(c), "name", c.getName())).toList()));
+        }
     }
 
     private static void requireSame(List<Card> bound, Iterable<Card> current) {
@@ -96,8 +98,8 @@ public final class CombatDamageQuestion implements DecisionRequest {
             if (isHiddenCard(card, player)) {
                 throw new UnsupportedOperationException("Combat damage visibility");
             }
-            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
-            else { PriorityQuestion.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 
@@ -185,6 +187,27 @@ public final class CombatDamageQuestion implements DecisionRequest {
 
     private boolean hasInvalidDamageAmount(int target, int amount) {
         return target < 0 || target >= targets.size() || amount < 0;
+    }
+
+    @Override public List<Integer> encode(Object answer) {
+        @SuppressWarnings("unchecked")
+        Map<Card, Integer> chosen = (Map<Card, Integer>) answer;
+        if (chosen == null) { throw new UnsupportedOperationException("Deferred combat damage outside vanilla scope"); }
+        var result = new ArrayList<Integer>();
+        for (var entry : chosen.entrySet()) {
+            int index = entry.getKey() == null ? -1 : targets.indexOf(entry.getKey());
+            if (index < 0 || targets.get(index) != entry.getKey() || entry.getValue() == null) {
+                throw new IllegalArgumentException("Final damage map outside exact bindings");
+            }
+        }
+        for (int i = 0; i < targets.size(); i++) {
+            if (chosen.containsKey(targets.get(i))) {
+                result.add(i);
+                result.add(chosen.get(targets.get(i)));
+            }
+        }
+        validate(result);
+        return List.copyOf(result);
     }
 
     @Override public Map<String, Object> data() { return data; }

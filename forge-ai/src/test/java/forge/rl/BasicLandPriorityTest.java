@@ -108,12 +108,12 @@ public class BasicLandPriorityTest {
 
     @Test public void clientCanPassChooseLandAndReceivePriorityAgain() {
         List<Map<?, ?>> requests = new ArrayList<>();
-        Fixture fixture = fixture(envelope -> {
-            assertEquals(envelope.keySet(), java.util.Set.of("state", "question"));
-            Map<?, ?> request = (Map<?, ?>) envelope.get("question");
-            requests.add(request);
-            assertEquals(request.get("kind"), "priority");
-            assertEquals(request.get("scope"), "ordinary_lands_creatures_mana");
+        Fixture fixture = fixture(req -> {
+            assertEquals(req.keySet(), java.util.Set.of("state", "question"));
+            Map<?, ?> data = (Map<?, ?>) req.get("question");
+            requests.add(data);
+            assertEquals(data.get("kind"), "priority");
+            assertEquals(data.get("scope"), "ordinary_lands_creatures_mana");
             return List.of(requests.size() == 2 ? 2 : 0);
         });
         var controller = fixture.player().getController();
@@ -132,9 +132,9 @@ public class BasicLandPriorityTest {
         assertEquals(((Map<?, ?>) ((List<?>) requests.get(0).get("items")).get(2)).get("name"), "Island");
         assertEquals(((List<?>) requests.get(2).get("items")).size(), 2);
         for (boolean opponentTurn : List.of(false, true)) {
-            Fixture restricted = fixture(envelope -> {
-                Map<?, ?> request = (Map<?, ?>) envelope.get("question");
-                assertEquals(request.get("items"), List.of(Map.of("type", "pass")));
+            Fixture restricted = fixture(req -> {
+                Map<?, ?> data = (Map<?, ?>) req.get("question");
+                assertEquals(data.get("items"), List.of(Map.of("type", "pass")));
                 return List.of(0);
             });
             restricted.game().getPhaseHandler().devModeSet(opponentTurn ? PhaseType.MAIN1 : PhaseType.COMBAT_BEGIN,

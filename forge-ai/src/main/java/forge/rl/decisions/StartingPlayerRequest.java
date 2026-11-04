@@ -3,22 +3,27 @@ package forge.rl.decisions;
 import forge.rl.StateReader;
 import forge.game.player.Player;
 
+import java.util.List;
 import java.util.Map;
 
 /** The native starting-player choice; observation currently supports ordinary duels. */
-public final class StartingPlayerQuestion implements DecisionRequest {
+public final class StartingPlayerRequest implements DecisionRequest {
     public final Map<String, Object> data;
-    final SelectionQuestion<Player> selection;
+    final SelectionRequest<Player> selection;
 
-    public StartingPlayerQuestion(Player player, StateReader view, boolean isFirstGame) {
+    public StartingPlayerRequest(Player player, boolean isFirstGame) {
         var game = player.getGame();
         if (!isOrdinaryDuel(player)) {
             throw new UnsupportedOperationException("Starting player observation requires an ordinary duel");
         }
-        selection = new SelectionQuestion<>(player, view, "starting_player", game.getPlayers(), "", 1, 1,
+        selection = new SelectionRequest<>(player, "starting_player", game.getPlayers(), "", 1, 1,
                 false, null, null, null);
-        data = Map.of("state", selection.data.get("state"), "question", Map.of("kind", "starting_player",
-                "isFirstGame", isFirstGame, "items", ((Map<?, ?>) selection.data.get("question")).get("items")));
+        data = Map.of("state", selection.data().get("state"), "question", Map.of("kind", "starting_player",
+                "isFirstGame", isFirstGame, "items", ((Map<?, ?>) selection.data().get("question")).get("items")));
+    }
+
+    @Override public List<Integer> encode(Object answer) {
+        return selection.encode(List.of((Player) answer));
     }
 
     @Override public Map<String, Object> data() { return data; }

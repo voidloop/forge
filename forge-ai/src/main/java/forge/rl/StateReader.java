@@ -16,7 +16,7 @@ import java.security.SecureRandom;
 import java.util.*;
 
 /** Observer-bound access to Forge. Only detached data crosses this boundary. */
-public final class StateReader {
+public final class StateReader implements AutoCloseable {
     private final Player observer;
     private final Map<Integer, Integer> aliases = new HashMap<>();
     private final Map<Integer, Integer> stackAliases = new HashMap<>();

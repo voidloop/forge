@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 /** First mana family: a single visible land, tap cost, one mana and a literal color menu. */
-public final class ManaQuestion implements DecisionRequest {
+public final class ManaRequest implements DecisionRequest {
     public final Map<String, Object> data;
     final Choice choice;
 
@@ -38,7 +38,7 @@ public final class ManaQuestion implements DecisionRequest {
 
     public static boolean hasSource(Player player) {
         return player.getCardsIn(ZoneType.Battlefield).stream().filter(Card::isLand)
-                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaQuestion::supported));
+                .anyMatch(card -> card.getSpellAbilities().stream().anyMatch(ManaRequest::supported));
     }
 
     private static SpellAbility requireContext(Player player) {
@@ -69,7 +69,7 @@ public final class ManaQuestion implements DecisionRequest {
         return source;
     }
 
-    public ManaQuestion(Player player, StateReader view) {
+    public ManaRequest(Player player) {
         SpellAbility ability = requireContext(player);
         Player activator = ability.getActivatingPlayer();
         boolean playable;
@@ -77,14 +77,16 @@ public final class ManaQuestion implements DecisionRequest {
         try { playable = ability.canPlay(); }
         finally { ability.setActivatingPlayer(activator); }
         choice = playable ? new Choice(ability, ability.getHostCard()) : null;
-        List<Map<String, Object>> items = new ArrayList<>();
-        items.add(Map.of("type", "pass"));
-        if (choice != null) {
-            items.add(Map.of("type", "activate_mana", "name", choice.card.getName(),
-                    "key", view.reference(choice.card)));
+        try (var view = new StateReader(player, 0L)) {
+            List<Map<String, Object>> items = new ArrayList<>();
+            items.add(Map.of("type", "pass"));
+            if (choice != null) {
+                items.add(Map.of("type", "activate_mana", "name", choice.card.getName(),
+                        "key", view.reference(choice.card)));
+            }
+            data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority_mana",
+                    "scope", "pass_or_single_tap_mana", "items", List.copyOf(items)));
         }
-        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "priority_mana",
-                "scope", "pass_or_single_tap_mana", "items", List.copyOf(items)));
     }
 
     public Choice selected() { return choice; }
@@ -96,7 +98,27 @@ public final class ManaQuestion implements DecisionRequest {
         return answer.get(0);
     }
 
-    public record ColorRequest(Choice choice, Map<String, Object> data) implements DecisionRequest { }
+    @Override public List<Integer> encode(Object answer) {
+        int count = choice == null ? 1 : 2;
+        if (hasInvalidIndexAnswer((List<Integer>) answer, count)) {
+            throw new IllegalArgumentException("Invalid mana priority answer");
+        }
+        return (List<Integer>) answer;
+    }
+
+    public record ColorRequest(Choice choice, Map<String, Object> data) implements DecisionRequest {
+        @Override public List<Integer> encode(Object answer) {
+            byte chosen = (Byte) answer;
+            var options = choice.colors().stream().toList();
+            for (int i = 0; i < options.size(); i++) {
+                if (options.get(i).getColorMask() == chosen) {
+                    choice.color = chosen;
+                    return List.of(i);
+                }
+            }
+            throw new IllegalArgumentException("Native mana color outside request options");
+        }
+    }
 
     public static final class Choice {
         public final SpellAbility ability;
@@ -127,14 +149,16 @@ public final class ManaQuestion implements DecisionRequest {
 
         ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
-        public ColorRequest colorRequest(Player player, StateReader view, String message, SpellAbility source, ColorSet offered) {
+        public ColorRequest colorRequest(Player player, String message, SpellAbility source, ColorSet offered) {
             if (hasUnboundColorRequest(player, source)) {
                 throw new IllegalStateException("Unbound or repeated mana color question");
             }
             samePriority(player);
             if (offered.getColor() != colors().getColor()) { throw new UnsupportedOperationException("AI-restricted mana menu must not be exported"); }
-            return new ColorRequest(this, Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_color", "source", view.reference(card),
-                    "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList())));
+            try (var view = new StateReader(player, 0L)) {
+                return new ColorRequest(this, Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_color", "source", view.reference(card),
+                        "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList())));
+            }
         }
 
         private void samePriority(Player player) {

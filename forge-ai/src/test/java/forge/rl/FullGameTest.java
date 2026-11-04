@@ -100,7 +100,7 @@ public class FullGameTest {
     }
 
     @Test public void emptyUnsupportedReportIsAServiceAndRealUnsupportedCardsStop() {
-        Game game = fixture(List.of(new LobbyPlayerRl("first", request -> { throw new AssertionError("No question expected"); }),
+        Game game = fixture(List.of(new LobbyPlayerRl("first", request -> { throw new AssertionError("No request expected"); }),
                 new LobbyPlayerAi("second", null)));
         var controller = (PlayerControllerRl) game.getRegisteredPlayers().get(0).getController();
         Player player = game.getRegisteredPlayers().get(0);

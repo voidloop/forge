@@ -56,19 +56,19 @@ public class PlayerControllerRlTest {
         var baseline = OriginalCompositeChoice.execute(OriginalCompositeChoice.fixture("baseline", null));
         for (int run = 0; run < 2; run++) {
             AtomicInteger calls = new AtomicInteger();
-            var fixture = fixture(request -> {
+            var fixture = fixture(req -> {
                 calls.incrementAndGet();
-                assertEquals(request.keySet(), java.util.Set.of("state", "question"));
-                Map<?, ?> options = (Map<?, ?>) request.get("question");
-                return switch ((String) options.get("kind")) {
+                assertEquals(req.keySet(), java.util.Set.of("state", "question"));
+                Map<?, ?> data = (Map<?, ?>) req.get("question");
+                return switch ((String) data.get("kind")) {
                     case "number" -> List.of(3);
                     case "number_option", "binary", "confirm", "type" -> List.of(1);
                     case "mode_target" -> {
-                        assertEquals(((Map<?, ?>) ((List<?>) options.get("targets")).get(0)).get("name"), "Grizzly Bears");
-                        assertEquals(((List<?>) options.get("modes")).size(), 2);
+                        assertEquals(((Map<?, ?>) ((List<?>) data.get("targets")).get(0)).get("name"), "Grizzly Bears");
+                        assertEquals(((List<?>) data.get("modes")).size(), 2);
                         yield List.of(0, 0);
                     }
-                    default -> throw new AssertionError(request);
+                    default -> throw new AssertionError(data);
                 };
             });
             PlayerController controller = fixture.player().getController();

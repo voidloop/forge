@@ -4,17 +4,18 @@ import forge.rl.StateReader;
 import forge.game.GameEntity;
 import forge.game.GameStage;
 import forge.game.GameType;
-import forge.game.card.Card;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.zone.ZoneType;
 
+import forge.game.card.Card;
+
 import java.util.*;
 
 /** Final attacker/defender assignments, bound before the native void decision. */
-public final class AttackersQuestion implements DecisionRequest {
+public final class AttackersRequest implements DecisionRequest {
     public final Map<String, Object> data;
     private final Player player;
     final Combat combat;
@@ -34,36 +35,38 @@ public final class AttackersQuestion implements DecisionRequest {
             if (isHiddenCard(card)) {
                 throw new UnsupportedOperationException("Attacker declaration visibility");
             }
-            if (card.isBasicLand()) { PriorityQuestion.requireBasicLand(card); }
-            else { PriorityQuestion.requireCreature(card); }
+            if (card.isBasicLand()) { PriorityRequest.requireBasicLand(card); }
+            else { PriorityRequest.requireCreature(card); }
         }
     }
 
-    public AttackersQuestion(Player player, StateReader view, Player attacker, Combat combat) {
+    public AttackersRequest(Player player, Player attacker, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
         if (hasUnboundDeclaration(attacker)) {
             throw new IllegalArgumentException("Unbound or nonempty attacker declaration");
         }
-        attackers = List.copyOf(CombatUtil.getPossibleAttackers(player));
-        defenders = List.copyOf(combat.getDefenders());
-        var items = new ArrayList<Map<String, Object>>();
-        for (Card card : attackers) {
-            var legal = new ArrayList<Integer>();
-            for (int i = 0; i < defenders.size(); i++) {
-                if (CombatUtil.canAttack(card, defenders.get(i))) {
-                    if (CombatUtil.getAttackCost(player.getGame(), card, defenders.get(i)) != null) {
-                        throw new UnsupportedOperationException("Attacker declaration cost");
+        try (var view = new StateReader(player, 0L)) {
+            attackers = List.copyOf(CombatUtil.getPossibleAttackers(player));
+            defenders = List.copyOf(combat.getDefenders());
+            var items = new ArrayList<Map<String, Object>>();
+            for (Card card : attackers) {
+                var legal = new ArrayList<Integer>();
+                for (int i = 0; i < defenders.size(); i++) {
+                    if (CombatUtil.canAttack(card, defenders.get(i))) {
+                        if (CombatUtil.getAttackCost(player.getGame(), card, defenders.get(i)) != null) {
+                            throw new UnsupportedOperationException("Attacker declaration cost");
+                        }
+                        legal.add(i);
                     }
-                    legal.add(i);
                 }
+                items.add(Map.of("key", view.reference(card), "name", card.getName(), "defenders", List.copyOf(legal)));
             }
-            items.add(Map.of("key", view.reference(card), "name", card.getName(), "defenders", List.copyOf(legal)));
+            data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_attackers",
+                    "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
+                    "defenders", defenders.stream().map(d -> Map.of("key", view.reference(d), "name", d.getName())).toList()));
         }
-        data = Map.of("state", view.snapshot(), "question", Map.of("kind", "declare_attackers",
-                "scope", "ordinary_vanilla_duel", "items", List.copyOf(items),
-                "defenders", defenders.stream().map(d -> Map.of("key", view.reference(d), "name", d.getName())).toList()));
     }
 
     List<Card> validate(List<Integer> answer) {
@@ -124,6 +127,28 @@ public final class AttackersQuestion implements DecisionRequest {
         return chosen.contains(card) || player.getGame().getCardState(card, null) != card
                 || card.getController() != player || !card.isInZone(ZoneType.Battlefield)
                 || !CombatUtil.canAttack(card, defenders.get(d));
+    }
+
+    @Override public List<Integer> encode(Object answer) {
+        requireContext();
+        var result = new ArrayList<Integer>();
+        for (Card card : combat.getAttackers()) {
+            GameEntity defender = combat.getDefenderByAttacker(card);
+            int a = attackers.indexOf(card), d = defenders.indexOf(defender);
+            if (!hasExactBindings(card, defender, a, d)) {
+                throw new IllegalArgumentException("Final attack declaration outside exact bindings");
+            }
+            result.add(a);
+            result.add(d);
+        }
+        validate(result);
+        if (!CombatUtil.validateAttackers(combat)) { throw new IllegalArgumentException("Native attack declaration invalid"); }
+        return List.copyOf(result);
+    }
+
+    private boolean hasExactBindings(Card attacker, GameEntity defender, int attackerIndex, int defenderIndex) {
+        return attackerIndex >= 0 && attackers.get(attackerIndex) == attacker
+                && defenderIndex >= 0 && defenders.get(defenderIndex) == defender;
     }
 
     @Override public Map<String, Object> data() { return data; }

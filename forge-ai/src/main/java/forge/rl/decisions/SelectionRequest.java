@@ -14,15 +14,15 @@ import java.util.Map;
 import java.util.Objects;
 
 /** One native selection: detached question and private, invocation-local bindings. */
-public final class SelectionQuestion<T extends GameEntity> implements DecisionRequest {
+public final class SelectionRequest<T extends GameEntity> implements DecisionRequest {
     public final Map<String, Object> data;
     final List<T> bindings;
     private final int lower;
     private final int upper;
     private final boolean optional;
 
-    public SelectionQuestion(Player observer, StateReader view, String kind, Iterable<T> options, String title, int min, int max,
-            boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
+    public SelectionRequest(Player observer, String kind, Iterable<T> options, String title, int min, int max,
+                            boolean optional, DelayedReveal reveal, Player related, Map<String, Object> params) {
         this.optional = optional;
         if (hasUnsupportedMetadata(reveal, params)) {
             throw new UnsupportedOperationException("selection reveal/parameters");
@@ -50,24 +50,60 @@ public final class SelectionQuestion<T extends GameEntity> implements DecisionRe
         // Native InputSelectEntitiesFromList also caps both bounds to the available list size.
         lower = Math.min(min, bindings.size());
         upper = Math.min(max, bindings.size());
-        Map<String, Object> facts = view.snapshot();
-        for (int i = 0; i < bindings.size(); i++) {
-            Map<String, Object> key = view.reference(bindings.get(i));
-            String group = bindings.get(i) instanceof Card ? "cards" : "players";
-            boolean observed = key != null && ((List<?>) facts.get(group)).stream()
-                    .anyMatch(node -> Objects.equals(((Map<?, ?>) node).get("id"), key.get("id")));
-            if (!observed) { throw new UnsupportedOperationException("Selection option is absent from observation"); }
-            Map<String, Object> option = new java.util.LinkedHashMap<>(descriptions.get(i));
-            option.put("key", key);
-            descriptions.set(i, Map.copyOf(option));
+        try (var view = new StateReader(observer, 0L)) {
+            Map<String, Object> facts = view.snapshot();
+            for (int i = 0; i < bindings.size(); i++) {
+                Map<String, Object> key = view.reference(bindings.get(i));
+                String group = bindings.get(i) instanceof Card ? "cards" : "players";
+                boolean observed = key != null && ((List<?>) facts.get(group)).stream()
+                        .anyMatch(node -> Objects.equals(((Map<?, ?>) node).get("id"), key.get("id")));
+                if (!observed) { throw new UnsupportedOperationException("Selection option is absent from observation"); }
+                Map<String, Object> option = new java.util.LinkedHashMap<>(descriptions.get(i));
+                option.put("key", key);
+                descriptions.set(i, Map.copyOf(option));
+            }
+            Map<String, Object> decision = StateReader.data("kind", kind, "prompt", Objects.toString(title, ""),
+                    "items", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
+                    "relatedPlayer", related == null ? null : view.reference(related));
+            data = Map.of("state", facts, "question", decision);
         }
-        Map<String, Object> decision = StateReader.data("kind", kind, "prompt", Objects.toString(title, ""),
-                "items", List.copyOf(descriptions), "min", lower, "max", upper, "optional", optional,
-                "relatedPlayer", related == null ? null : view.reference(related));
-        data = Map.of("state", facts, "question", decision);
     }
 
     @Override public Map<String, Object> data() { return data; }
+
+    @SuppressWarnings("unchecked")
+    @Override public List<Integer> encode(Object answer) {
+        if (answer instanceof List<?> list) {
+            if (!list.isEmpty() && list.get(0) instanceof Integer) {
+                validate((List<Integer>) list);
+                return (List<Integer>) list;
+            }
+            // List of native entities
+            List<Integer> result = new ArrayList<>();
+            for (Object entity : list) {
+                int index = bindings.indexOf(entity);
+                if (index < 0 || bindings.get(index) != entity) {
+                    throw new IllegalArgumentException("Chosen entity is not a legal option");
+                }
+                result.add(index);
+            }
+            validate(result);
+            return List.copyOf(result);
+        }
+        // Fallback for single entity chosen by the original controller
+        if (answer == null) {
+            List<Integer> result = List.of();
+            validate(result);
+            return result;
+        }
+        int index = bindings.indexOf(answer);
+        if (index < 0 || bindings.get(index) != answer) {
+            throw new IllegalArgumentException("Chosen entity is not a legal option");
+        }
+        List<Integer> result = List.of(index);
+        validate(result);
+        return result;
+    }
 
     void validate(List<Integer> selected) {
         Objects.requireNonNull(selected, "Missing selection response");
