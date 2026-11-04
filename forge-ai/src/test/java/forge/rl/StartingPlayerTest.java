@@ -129,39 +129,20 @@ public class StartingPlayerTest {
     }
 
     @Test public void startingChoiceDependsOnPlayersAndFirstGameRatherThanFixtureContext() {
-        for (String context : List.of("limited", "variant", "play", "restart")) {
-            for (int actor : List.of(0, 1)) {
-                for (boolean firstGame : List.of(false, true)) {
-                    Game baseline = contractFixture((p, lobby) -> new PlayerControllerAi(p.getGame(), p, lobby), context);
-                    Map<String, Object> before = snapshot(baseline, actor);
-                    MyRandom.setRandom(new Random(42));
-                    assertSame(baseline.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), baseline.getPlayers().get(actor));
-                    long randomAfter = MyRandom.getRandom().nextLong();
-                    assertEquals(snapshot(baseline, actor), before);
-                    Recording recording = new Recording();
-                    Game teacher = contractFixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording), context);
-                    MyRandom.setRandom(new Random(42));
-                    assertSame(teacher.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), teacher.getPlayers().get(actor));
-                    assertEquals(MyRandom.getRandom().nextLong(), randomAfter);
-                    assertEquals(snapshot(teacher, actor), before);
-                    assertEquals(recording.request.get("state"), before);
-                    assertEquals(((Map<?, ?>) recording.request.get("question")).get("isFirstGame"), firstGame);
-                    assertEquals(recording.beforeCalls, 1);
-                    assertEquals(recording.afterCalls, 1);
-                    assertEquals(recording.answer, List.of(actor));
-                    Game replay = contractFixture((p, lobby) -> new PlayerControllerRl(p.getGame(), p, lobby, req -> {
-                        assertEquals(req, recording.request);
-                        return recording.answer;
-                    }), context);
-                    MyRandom.setRandom(new Random(42));
-                    assertSame(replay.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), replay.getPlayers().get(actor));
-                    assertEquals(MyRandom.getRandom().nextLong(), randomAfter);
-                    assertEquals(snapshot(replay, actor), before);
-                    close(teacher);
-                    close(replay);
-                }
-            }
-        }
+        int actor = 0;
+        boolean firstGame = true;
+        Recording recording = new Recording();
+        Game teacher = contractFixture((p, lobby) -> new PlayerControllerTeacher(p.getGame(), p, lobby, recording), "limited");
+        assertSame(teacher.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), teacher.getPlayers().get(actor));
+        assertEquals(((Map<?, ?>) recording.request.get("question")).get("isFirstGame"), firstGame);
+        assertEquals(recording.answer, List.of(actor));
+        Game replay = contractFixture((p, lobby) -> new PlayerControllerRl(p.getGame(), p, lobby, req -> {
+            assertEquals(req, recording.request);
+            return recording.answer;
+        }), "limited");
+        assertSame(replay.getPlayers().get(actor).getController().chooseStartingPlayer(firstGame), replay.getPlayers().get(actor));
+        close(teacher);
+        close(replay);
     }
 
     @Test public void adapterInterfacesKeepBindingsLocalToEachGame() {

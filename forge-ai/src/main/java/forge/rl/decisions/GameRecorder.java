@@ -1,10 +1,10 @@
 package forge.rl.decisions;
 
+import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.rl.IDecisionRecordCallback;
 import forge.rl.StateReader;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -13,21 +13,24 @@ import java.util.function.Supplier;
  * External lifecycle manager for game decision recording.
  */
 public final class GameRecorder {
+    private final Player player;
     private final IDecisionRecordCallback callback;
     private final Context context = new Context();
+    private StateReader activeSession;
     private RuntimeException failure;
 
-    public GameRecorder(IDecisionRecordCallback callback) {
+    public GameRecorder(Player player, IDecisionRecordCallback callback) {
+        this.player = Objects.requireNonNull(player);
         this.callback = Objects.requireNonNull(callback);
     }
 
-    public void start(StateReader view) {
-        requireHealthy();
-        callback.observe(view);
-    }
 
     public void close() {
         try {
+            if (activeSession != null) {
+                activeSession.close();
+                activeSession = null;
+            }
             callback.close();
         } finally {
             if (failure == null) {
@@ -52,8 +55,16 @@ public final class GameRecorder {
         return record(request, null, original);
     }
 
-    public <A> A record(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
+    private void ensureSession() {
         requireHealthy();
+        if (activeSession == null) {
+            activeSession = new StateReader(player, 0L);
+            callback.observe(activeSession);
+        }
+    }
+
+    public <A> A record(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
+        ensureSession();
         var question = (Map<?, ?>) request.data().get("question");
         String name = (String) question.get("kind");
 
@@ -98,7 +109,7 @@ public final class GameRecorder {
     }
 
     public void recordExecuted(Map<String, Object> data) {
-        requireHealthy();
+        ensureSession();
         callback.executed(data);
     }
 }

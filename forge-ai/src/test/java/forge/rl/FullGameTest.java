@@ -99,6 +99,46 @@ public class FullGameTest {
         return result;
     }
 
+    @Test public void fullGameReplayFinishesWithoutErrors() throws Exception {
+        String seed = randomState();
+        List<List<Integer>> answers = new ArrayList<>();
+
+        IDecisionRecordCallback recorder = new IDecisionRecordCallback() {
+            @Override public void before(Map<String, Object> request) { }
+            @Override public void after(List<Integer> answer) { answers.add(answer); }
+        };
+
+        // 1. Record a game
+        restoreRandom(seed);
+        Game teacherGame = fixture(List.of(new LobbyPlayerTeacher("P1", recorder), new LobbyPlayerAi("P2", null)));
+        teacherGame.getAction().startGame(null);
+        while (!teacherGame.isGameOver()) {
+            teacherGame.getPhaseHandler().autoPassUntilEmptyStack();
+        }
+        teacherGame.getRegisteredPlayers().forEach(p -> {
+            if (p.getController() instanceof PlayerControllerTeacher t) { t.closeObservation(); }
+        });
+
+        // 2. Replay the game
+        restoreRandom(seed);
+        Iterator<List<Integer>> answerIterator = answers.iterator();
+
+        Game replayGame = fixture(List.of(
+                new LobbyPlayerRl("P1", request -> answerIterator.next()),
+                new LobbyPlayerAi("P2", null)
+        ));
+        replayGame.getAction().startGame(null);
+        while (!replayGame.isGameOver()) {
+            replayGame.getPhaseHandler().autoPassUntilEmptyStack();
+        }
+        replayGame.getRegisteredPlayers().forEach(p -> {
+            if (p.getController() instanceof PlayerControllerRl rl) { rl.closeObservation(); }
+        });
+
+        assertTrue(replayGame.isGameOver());
+        assertFalse(answerIterator.hasNext(), "Not all recorded answers were used");
+    }
+
     @Test public void emptyUnsupportedReportIsAServiceAndRealUnsupportedCardsStop() {
         Game game = fixture(List.of(new LobbyPlayerRl("first", request -> { throw new AssertionError("No request expected"); }),
                 new LobbyPlayerAi("second", null)));

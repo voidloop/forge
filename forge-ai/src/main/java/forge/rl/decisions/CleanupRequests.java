@@ -1,6 +1,5 @@
 package forge.rl.decisions;
 
-import forge.rl.StateReader;
 import forge.game.card.CardCollectionView;
 import forge.game.card.Card;
 import forge.game.player.Player;

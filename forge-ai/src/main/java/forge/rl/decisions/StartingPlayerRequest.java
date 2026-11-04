@@ -1,6 +1,5 @@
 package forge.rl.decisions;
 
-import forge.rl.StateReader;
 import forge.game.player.Player;
 
 import java.util.List;

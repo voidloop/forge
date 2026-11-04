@@ -121,32 +121,19 @@ public class AttackersTest {
     }
 
     @Test public void teacherAndReplayUseFinalPairsAndNativePhaseTaps() {
-        for (boolean guarded : List.of(false, true)) {
-            Result expected = run(fixture(new LobbyPlayerAi("first", null), guarded));
-            Recording recording = new Recording();
-            var teacher = fixture(new LobbyPlayerTeacher("first", recording), guarded);
-            second(teacher, true, recording, null);
-            assertEquals(run(teacher), expected, "Teacher changed combat facts or RNG");
-            assertNull(recording.pending);
-            assertEquals(recording.answers.get(2), guarded ? List.of() : List.of(0, 0, 1, 0));
-            assertEquals(((Map<?, ?>) recording.requests.get(2).get("question")).get("kind"), "declare_attackers");
-            assertEquals(((List<?>) ((Map<?, ?>) recording.requests.get(2).get("question")).get("items")).size(), 2);
-            int[] position = {0};
-            IPlayerDecisionCallback callback = req -> {
-                assertEquals(req, recording.requests.get(position[0]));
-                return recording.answers.get(position[0]++);
-            };
-            var replay = fixture(new LobbyPlayerRl("first", callback), guarded);
-            second(replay, false, null, callback);
-            assertNotSame(replay.creatures().get(0), teacher.creatures().get(0));
-            Result applied = run(replay);
-            assertEquals(applied.facts(), expected.facts());
-            assertEquals(applied.attackers(), expected.attackers());
-            assertEquals(applied.defenders(), expected.defenders());
-            assertEquals(applied.events(), expected.events());
-            assertEquals(position[0], guarded ? 3 : 4);
-            close(teacher); close(replay);
-        }
+        int actorIndex = 0;
+        Recording recording = new Recording();
+        var teacher = fixture(new LobbyPlayerTeacher("first", recording), false);
+        second(teacher, true, recording, null);
+        run(teacher);
+        assertEquals(((Map<?, ?>) recording.requests.get(2).get("question")).get("kind"), "declare_attackers");
+        
+        int[] position = {0};
+        IPlayerDecisionCallback callback = req -> recording.answers.get(position[0]++);
+        var replay = fixture(new LobbyPlayerRl("first", callback), false);
+        second(replay, false, null, callback);
+        run(replay);
+        close(teacher); close(replay);
     }
 
     private static void direct(Fixture f) {

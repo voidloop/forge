@@ -35,8 +35,6 @@ import forge.util.collect.FCollectionView;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.Supplier;
 
 /** Records supported final decisions, including subordinate mana colors, through the public API. */
 public final class PlayerControllerTeacher extends PlayerControllerAi {
@@ -46,49 +44,36 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     private ManaRequest.Choice pendingMana;
     private ManaRequest.Choice activeMana;
     private TriggerRequest activeTrigger;
-    private boolean observationStarted;
-    private boolean observationClosed;
 
     public PlayerControllerTeacher(Game game, Player player, LobbyPlayerAi lobby, IDecisionRecordCallback callback) {
         super(game, player, lobby);
-        this.recorder = new GameRecorder(callback);
-    }
-
-    public void startObservation() {
-        if (!observationStarted) {
-            try (var view = new StateReader(player, 0L)) {
-                recorder.start(view);
-            }
-            observationStarted = true;
-        }
+        this.recorder = new GameRecorder(player, callback);
     }
 
     public void closeObservation() {
-        observationClosed = true;
         recorder.close();
     }
 
     @Override public void awaitNextInput() {
         try {
-            startObservation();
             super.awaitNextInput();
-        } catch (RuntimeException error) { recorder.fail(error); throw error; }
+        } catch (RuntimeException error) {
+            recorder.fail(error);
+            throw error;
+        }
     }
 
     @Override public Player chooseStartingPlayer(boolean isFirstGame) {
-        startObservation();
         return recorder.record(new StartingPlayerRequest(player, isFirstGame),
                 () -> super.chooseStartingPlayer(isFirstGame));
     }
 
     @Override public boolean mulliganKeepHand(Player first, int cardsToReturn) {
-        startObservation();
         return recorder.record(MulliganRequests.keep(player, first, cardsToReturn),
                 () -> super.mulliganKeepHand(first, cardsToReturn));
     }
 
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
-        startObservation();
         var request = MulliganRequests.tuck(player, hand, cardsToReturn);
         if (cardsToReturn == 0) { return super.tuckCardsViaMulligan(hand, cardsToReturn); }
         return recorder.record(request, () -> super.tuckCardsViaMulligan(hand, cardsToReturn));
@@ -96,38 +81,32 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        startObservation();
         return recorder.record(new ConfirmActionRequest(player, sa, mode, message, options, cardToShow, params), sa,
                 () -> super.confirmAction(sa, mode, message, options, cardToShow, params));
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        startObservation();
         return recorder.record(CleanupRequests.create(player, numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard));
     }
 
     @Override public void declareAttackers(Player attacker, Combat combat) {
-        startObservation();
         recorder.record(new AttackersRequest(player, attacker, combat),
                 () -> { super.declareAttackers(attacker, combat); return null; });
     }
 
     @Override public void declareBlockers(Player defender, Combat combat) {
-        startObservation();
         recorder.record(new BlockersRequest(player, defender, combat),
                 () -> { super.declareBlockers(defender, combat); return null; });
     }
 
     @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
             int damage, GameEntity defender, boolean overrideOrder) {
-        startObservation();
         return recorder.record(new CombatDamageRequest(player, source, targets, remaining, damage, defender, overrideOrder),
                 () -> super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder));
     }
 
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
-        startObservation();
         return recorder.record(new CombatGraveyardRequest(player, cards, destinationZone, source),
                 () -> super.orderMoveToZoneList(cards, destinationZone, source));
     }
@@ -135,7 +114,6 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
         recorder.requireHealthy();
         try {
-            startObservation();
             if (ManaRequest.hasSource(player)) {
                 ManaRequest request = new ManaRequest(player);
                 return recorder.record(request, () -> {
@@ -154,7 +132,6 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
-        startObservation();
         TriggerRequest request = new TriggerRequest(player, abilities);
         recorder.record(request, () -> {
             activeTrigger = request;
@@ -218,28 +195,24 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             String prompt, ManaConversionMatrix matrix, boolean effect) {
         recorder.requireHealthy();
         // Simplified zero payment logic for now
-        startObservation();
         return recorder.record(new ManaPaymentRequest(player, cost, part, ability, matrix, effect),
                 () -> super.payManaCost(cost, part, ability, prompt, matrix, effect));
     }
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        startObservation();
         return recorder.record(new SelectionRequest<>(player, "single_entity", options, title, 1, 1, optional, reveal, related, params), sa,
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        startObservation();
         return recorder.record(new SelectionRequest<>(player, "cards", options, title, min, max, optional, null, null, params), sa,
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params));
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        startObservation();
         return recorder.record(new SelectionRequest<>(player, "entities", options, title, min, max, min == 0, reveal, related, params), sa,
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params));
     }

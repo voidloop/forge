@@ -1,15 +1,7 @@
 package forge.rl;
 
-import forge.rl.decisions.PriorityRequest;
-import forge.rl.decisions.SelectionRequest;
-import forge.rl.decisions.SelectionExecutor;
 
 import forge.ai.LobbyPlayerAi;
-import forge.ai.PlayerControllerAi;
-import forge.game.Game;
-import forge.game.card.CardCollection;
-import forge.game.phase.PhaseType;
-import forge.game.zone.ZoneType;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
