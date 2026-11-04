@@ -126,9 +126,9 @@ public class CombatDamageTest {
         final List<Map<String, Object>> requests = new ArrayList<>();
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
-        @Override public void after(List<Integer> result) {
-            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
+        @Override public void after(List<Integer> answer) {
+            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
     }
 
@@ -149,8 +149,8 @@ public class CombatDamageTest {
             assertEquals(recording.requests.stream().filter(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("combat_damage")).count(),
                     scenario == 0 ? 0L : scenario == 1 ? 4L : 3L);
             int[] position = {0};
-            IPlayerDecisionCallback callback = req -> {
-                assertEquals(req, recording.requests.get(position[0]));
+            IPlayerDecisionCallback callback = request -> {
+                assertEquals(request, recording.requests.get(position[0]));
                 return recording.answers.get(position[0]++);
             };
             var replay = BlockersTest.fixture(new LobbyPlayerRl("first", callback), new LobbyPlayerRl("second", callback), scenario);
@@ -164,14 +164,14 @@ public class CombatDamageTest {
 
     @Test public void clientCanOverassignOrSplitWithoutLethalOrdering() {
         for (List<Integer> answer : List.of(List.of(1, 6), List.of(0, 1, 1, 5))) {
-            IPlayerDecisionCallback callback = req -> {
-                var data = (Map<?, ?>) req.get("question");
-                return switch ((String) data.get("kind")) {
+            IPlayerDecisionCallback callback = request -> {
+                var options = (Map<?, ?>) request.get("question");
+                return switch ((String) options.get("kind")) {
                     case "priority" -> List.of(0);
                     case "declare_blockers" -> List.of(0, 0, 1, 0);
                     case "combat_graveyard_order" -> List.of(1, 0);
-                    case "combat_damage" -> ((Number) data.get("damage")).intValue() == 6 ? answer : List.of(0, 2);
-                    default -> throw new AssertionError("Unexpected native request");
+                    case "combat_damage" -> ((Number) options.get("damage")).intValue() == 6 ? answer : List.of(0, 2);
+                    default -> throw new AssertionError("Unexpected native question");
                 };
             };
             var f = BlockersTest.fixture(new LobbyPlayerRl("first", callback), new LobbyPlayerRl("second", callback), 2);

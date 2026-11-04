@@ -108,8 +108,8 @@ public class MulliganTest {
             if (priority(data)) { throw new AtPriority(); }
             assertNull(pending); pending = data;
         }
-        @Override public void after(List<Integer> result) {
-            assertNotNull(pending); requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+        @Override public void after(List<Integer> answer) {
+            assertNotNull(pending); requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
     }
     private static void close(Game game) {
@@ -200,10 +200,10 @@ public class MulliganTest {
                             assertTrue(expected.offeredAfter().size() < 7);
                         }
                         int[] index = {0};
-                    Game replay = contractFixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-                        assertEquals(req, saved.requests.get(index[0]));
-                        return saved.answers.get(index[0]++);
-                    }), context);
+                        Game replay = contractFixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+                            assertEquals(request, saved.requests.get(index[0]));
+                            return saved.answers.get(index[0]++);
+                        }), context);
                         Choices actual = choose(replay, actor, first, count);
                         assertEquals(actual.keep(), expected.keep());
                         assertEquals(actual.tucked(), expected.tucked());
@@ -217,7 +217,7 @@ public class MulliganTest {
         }
     }
 
-    @Test public void invalidNativeBindingsAndCountsStopBeforeARequest() {
+    @Test public void invalidNativeBindingsAndCountsStopBeforeAQuestion() {
         for (boolean teacher : List.of(false, true)) {
             for (String invalid : List.of("negative_keep", "foreign_first", "negative_tuck", "too_many",
                     "partial", "foreign_hand", "opponent_hand", "copied_card")) {
@@ -226,7 +226,7 @@ public class MulliganTest {
                         ? new PlayerControllerTeacher(p.getGame(), p, l, new Recording() {
                             @Override public void before(Map<String, Object> data) { calls[0]++; super.before(data); }
                         })
-                        : new PlayerControllerRl(p.getGame(), p, l, req -> { calls[0]++; return List.of(1); }), "limited");
+                        : new PlayerControllerRl(p.getGame(), p, l, request -> { calls[0]++; return List.of(1); }), "limited");
                 Game foreign = contractFixture((p,l) -> new PlayerControllerAi(p.getGame(), p, l), "limited");
                 Player player = game.getPlayers().get(0);
                 var controller = player.getController();
@@ -263,11 +263,11 @@ public class MulliganTest {
         assertTrue(player.getController().mulliganKeepHand(player, 7));
         assertTrue(player.getController().tuckCardsViaMulligan(player.getCardsIn(ZoneType.Hand), 0).isEmpty());
         assertEquals(saved.requests.size(), 1);
-        assertNull(saved.pending, "Zero tuck must not open a callback request");
+        assertNull(saved.pending, "Zero tuck must not open a callback question");
         assertEquals(((Map<?, ?>) saved.requests.get(0).get("question")).get("cardsToReturn"), 7);
         int[] calls = {0};
-        Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-            assertEquals(req, saved.requests.get(calls[0]));
+        Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+            assertEquals(request, saved.requests.get(calls[0]));
             return saved.answers.get(calls[0]++);
         }), false);
         Player fresh = replay.getPlayers().get(0);
@@ -309,7 +309,7 @@ public class MulliganTest {
         }
     }
 
-    @Test public void nestedTeacherLondonAndUnfinishedExecutionDoNotOpenAnotherRequest() {
+    @Test public void nestedTeacherLondonAndUnfinishedExecutionDoNotOpenAnotherQuestion() {
         for (boolean tuck : List.of(false, true)) {
             Game[] nested = {null};
             Recording saved = new Recording() {
@@ -357,9 +357,9 @@ public class MulliganTest {
             String kind = tuck ? "mulligan_tuck" : "mulligan_keep";
             var failure = new IllegalArgumentException("mulligan recorder failed");
             Recording saved = new Recording() {
-                @Override public void after(List<Integer> result) {
+                @Override public void after(List<Integer> answer) {
                     if (((Map<?, ?>) pending.get("question")).get("kind").equals(kind)) { throw failure; }
-                    super.after(result);
+                    super.after(answer);
                 }
             };
             Game game = fixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), tuck);
@@ -394,9 +394,9 @@ public class MulliganTest {
             assertTrue(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("mulligan_keep")));
             assertEquals(saved.requests.stream().anyMatch(r -> ((Map<?, ?>) r.get("question")).get("kind").equals("mulligan_tuck")), bad);
             int[] index = {0};
-            Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-                if (priority(req)) { throw new AtPriority(); }
-                assertEquals(req, saved.requests.get(index[0]));
+            Game replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+                if (priority(request)) { throw new AtPriority(); }
+                assertEquals(request, saved.requests.get(index[0]));
                 return saved.answers.get(index[0]++);
             }), bad);
             assertNotSame(teacher.getPlayers().get(0), replay.getPlayers().get(0));
@@ -409,18 +409,18 @@ public class MulliganTest {
     @Test public void clientDrawMultipleTucksAndInvalidAnswers() {
         int[] keeps = {0};
         List<Card> ordered = new ArrayList<>();
-        Game game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-            var data = (Map<?, ?>) req.get("question");
-            switch ((String) data.get("kind")) {
+        Game game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+            var options = (Map<?, ?>) request.get("question");
+            switch ((String) options.get("kind")) {
                 case "starting_player": return List.of(p.getGame().getPlayers().indexOf(p.getSingleOpponent()));
                 case "mulligan_keep": return List.of(keeps[0]++ < 4 ? 0 : 1);
                 case "mulligan_tuck":
-                    int count = (Integer) data.get("min");
+                    int count = (Integer) options.get("min");
                     var hand = p.getCardsIn(ZoneType.Hand);
                     ordered.clear();
-                    List<Integer> result = new ArrayList<>();
-                    for (int i = count - 1; i >= 0; i--) { result.add(i); ordered.add(hand.get(i)); }
-                    return result;
+                    List<Integer> answer = new ArrayList<>();
+                    for (int i = count - 1; i >= 0; i--) { answer.add(i); ordered.add(hand.get(i)); }
+                    return answer;
                 default: throw new AtPriority();
             }
         }), false);
@@ -448,10 +448,10 @@ public class MulliganTest {
         StaticData.instance().setFilteredHandsEnabled(false);
         StaticData.instance().setMulliganRule(MulliganDefs.MulliganRule.London);
         test.londonContractsUseNativeInputsRatherThanFixtureContext();
-        test.invalidNativeBindingsAndCountsStopBeforeARequest();
+        test.invalidNativeBindingsAndCountsStopBeforeAQuestion();
         test.keepCountIsNotCappedToTheRemainingHandAndEmptyTuckIsSilent();
         test.londonWorkflowLimitsRemainExplicit();
-        test.nestedTeacherLondonAndUnfinishedExecutionDoNotOpenAnotherRequest();
+        test.nestedTeacherLondonAndUnfinishedExecutionDoNotOpenAnotherQuestion();
         test.mulliganRecorderFailureReachesTheNativeStartupCaller();
         test.nativeStartupTeacherNeutralityAndFreshReplay();
         test.clientDrawMultipleTucksAndInvalidAnswers();

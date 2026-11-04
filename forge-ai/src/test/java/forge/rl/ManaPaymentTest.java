@@ -26,8 +26,8 @@ public class ManaPaymentTest {
     private static final class Recording implements IDecisionRecordCallback {
         Map<String, Object> request;
         List<Integer> answer;
-        int requests;
-        @Override public void before(Map<String, Object> value) { assertNull(request); request = value; requests++; }
+        int questions;
+        @Override public void before(Map<String, Object> value) { assertNull(request); request = value; questions++; }
         @Override public void after(List<Integer> value) { assertNull(answer); answer = List.copyOf(value); }
     }
     private record Result(boolean paid, List<Boolean> taps, List<String> pool, List<String> spent,
@@ -81,13 +81,13 @@ public class ManaPaymentTest {
                 restrict(teacher, insufficient);
                 Result recorded = pay(teacher);
                 assertEquals(recorded, expected, "Teacher changed payment facts or RNG");
-                assertEquals(recording.requests, 1);
+                assertEquals(recording.questions, 1);
                 assertNotNull(recording.answer);
                 assertEquals(recording.answer.get(0).intValue(), insufficient ? 0 : 1);
                 int[] calls = {0};
-                var replay = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", req -> {
+                var replay = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", request -> {
                     assertEquals(++calls[0], 1);
-                    assertEquals(req, recording.request);
+                    assertEquals(request, recording.request);
                     return recording.answer;
                 }), floating);
                 restrict(replay, insufficient);
@@ -109,7 +109,7 @@ public class ManaPaymentTest {
 
     @Test public void clientChoosesSourcesSpendOrderAndCanDeclineWithoutInventedRefund() {
         for (List<Integer> answer : List.of(List.of(1, 2, 1, 0, 1, 0), List.of(0, 0), List.of(0, 1, 1), List.of(0, 1, 1, 1))) {
-            var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", req -> answer), false);
+            var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", request -> answer), false);
             Result result = pay(f);
             assertEquals(result.paid(), answer.get(0) == 1);
             assertEquals(result.activations().size(), answer.get(1).intValue());
@@ -131,7 +131,7 @@ public class ManaPaymentTest {
         }
         var broken = ManaPaymentBoundaryTest.fixture(new LobbyPlayerTeacher("first", new IDecisionRecordCallback() {
             @Override public void before(Map<String, Object> request) { }
-            @Override public void after(List<Integer> result) { throw new IllegalStateException("recorder failed"); }
+            @Override public void after(List<Integer> answer) { throw new IllegalStateException("recorder failed"); }
         }), false);
         assertThrows(IllegalStateException.class, () -> pay(broken));
         assertEquals(broken.spell().getPayingMana().size(), 2);
@@ -150,7 +150,7 @@ public class ManaPaymentTest {
 
     @Test public void equivalentManaSourceLimitationSurfacesBeforeWrongUnitIsRemoved() {
         for (List<Integer> answer : List.of(List.of(1, 2, 0, 1, 1, 0), List.of(0, 2, 0, 1, 1))) {
-            var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", req -> answer), false);
+            var f = ManaPaymentBoundaryTest.fixture(new LobbyPlayerRl("first", request -> answer), false);
             assertThrows(UnsupportedOperationException.class, () -> pay(f));
             assertTrue(f.lands().get(0).isTapped());
             assertTrue(f.lands().get(1).isTapped());

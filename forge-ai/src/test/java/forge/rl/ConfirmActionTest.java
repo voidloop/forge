@@ -11,6 +11,7 @@ import forge.game.Match;
 import forge.game.ability.AbilityFactory;
 import forge.game.ability.AbilityUtils;
 import forge.game.card.Card;
+import forge.game.card.CardCopyService;
 import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerActionConfirmMode;
@@ -37,9 +38,9 @@ public class ConfirmActionTest {
     private static class Recording implements IDecisionRecordCallback {
         final List<Entry> entries = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) {
-            assertNull(pending, "Nested confirmation request");
-            pending = data;
+        @Override public void before(Map<String, Object> request) {
+            assertNull(pending, "Nested confirmation question");
+            pending = request;
         }
         @Override public void after(List<Integer> answer) {
             assertNotNull(pending);
@@ -132,9 +133,9 @@ public class ConfirmActionTest {
                 String saved = recording.entries.toString();
                 MyRandom.setRandom(new Random(42));
                 int[] cursor = {0};
-                Game client = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
+                Game client = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
                     Entry entry = recording.entries.get(cursor[0]++);
-                    assertEquals(req, entry.request());
+                    assertEquals(request, entry.request());
                     return entry.answer();
                 }), librarySize);
                 try {
@@ -154,20 +155,52 @@ public class ConfirmActionTest {
             for (Player player : game.getPlayers()) {
                 for (var mode : PlayerActionConfirmMode.values()) {
                     assertTrue(player.getController().confirmAction(ability(player), mode, null, null));
-                    var req = recording.entries.get(recording.entries.size() - 1).request();
-                    var data = (Map<?, ?>) req.get("question");
-                    assertEquals(data.get("choice"), mode.toString());
-                    assertEquals(data.get("prompt"), "");
-                    assertEquals(((Map<?, ?>) data.get("ability")).get("api"), "Draw");
+                    Map<?, ?> options = (Map<?, ?>) recording.entries.get(recording.entries.size() - 1).request().get("question");
+                    assertEquals(options.get("choice"), mode.toString());
+                    assertEquals(options.get("prompt"), "");
+                    assertEquals(((Map<?, ?>) options.get("ability")).get("api"), "Draw");
                 }
             }
             assertEquals(recording.entries.size(), 2 * PlayerActionConfirmMode.values().length);
         } finally { close(game); }
     }
 
+    @Test public void rejectsUnsupportedMetadataAndUnboundSourcesBeforeQuestion() {
+        for (boolean teacher : List.of(false, true)) {
+            for (String invalid : List.of("options", "null_options", "card", "params", "copy", "foreign", "library", "opponent_hand", "face_down", "activator")) {
+                Recording recording = new Recording();
+                Game game = fixture((p, l) -> teacher ? new PlayerControllerTeacher(p.getGame(), p, l, recording)
+                        : new PlayerControllerRl(p.getGame(), p, l, request -> { throw new AssertionError(invalid); }), 3);
+                try {
+                    Player actor = game.getPlayers().get(0);
+                    Card host = actor.getCardsIn(ZoneType.Battlefield).getFirst();
+                    SpellAbility sa = ability(actor);
+                    switch (invalid) {
+                        case "copy" -> sa.setHostCard(new CardCopyService(host).copyCard(false));
+                        case "foreign" -> sa.setHostCard(fixture((p, l) -> new PlayerControllerAi(p.getGame(), p, l), 3)
+                                .getPlayers().get(0).getCardsIn(ZoneType.Battlefield).getFirst());
+                        case "library" -> sa.setHostCard(actor.getCardsIn(ZoneType.Library).getFirst());
+                        case "opponent_hand" -> sa.setHostCard(actor.getSingleOpponent().getCardsIn(ZoneType.Hand).getFirst());
+                        case "face_down" -> host.setFaceDown(true);
+                        case "activator" -> sa.setActivatingPlayer(new Player(actor.getName(), game, actor.getId()));
+                        default -> { }
+                    }
+                    var before = OriginalCompositeChoice.observe(game);
+                    var error = expectThrows(UnsupportedOperationException.class, () -> actor.getController().confirmAction(sa, null, "invalid",
+                            invalid.equals("null_options") ? null : invalid.equals("options") ? List.of("extra") : List.of(),
+                            invalid.equals("card") ? host : null, invalid.equals("params") ? Map.of("secret", host) : null));
+                    assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), error);
+                    assertTrue(recording.entries.isEmpty());
+                    assertNull(recording.pending);
+                    assertEquals(OriginalCompositeChoice.observe(game), before);
+                } finally { close(game); }
+            }
+        }
+    }
+
     @Test public void invalidClientAnswersAndStaleBindingStopWithoutEffects() {
         for (List<Integer> answer : List.of(List.<Integer>of(), List.of(-1), List.of(2), List.of(1, 0))) {
-            Game game = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, req -> answer), 3);
+            Game game = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, request -> answer), 3);
             try {
                 Player actor = game.getPlayers().get(0);
                 var before = OriginalCompositeChoice.observe(game);
@@ -175,6 +208,182 @@ public class ConfirmActionTest {
                 assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), error);
                 assertEquals(OriginalCompositeChoice.observe(game), before);
             } finally { close(game); }
+        }
+        for (boolean teacher : List.of(false, true)) {
+            SpellAbility[] bound = {null};
+            Recording recording = new Recording() {
+                @Override public void before(Map<String, Object> request) {
+                    super.before(request);
+                    bound[0].setHostCard(bound[0].getActivatingPlayer().getCardsIn(ZoneType.Battlefield).get(1));
+                }
+            };
+            Game game = fixture((p, l) -> teacher ? new PlayerControllerTeacher(p.getGame(), p, l, recording)
+                    : new PlayerControllerRl(p.getGame(), p, l, request -> {
+                        bound[0].setHostCard(p.getCardsIn(ZoneType.Battlefield).get(1));
+                        return List.of(1);
+                    }), 3);
+            try {
+                Player actor = game.getPlayers().get(0);
+                bound[0] = ability(actor);
+                var error = expectThrows(UnsupportedOperationException.class, () -> actor.getController().confirmAction(bound[0], null, "stale", null));
+                assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), error);
+                assertTrue(recording.entries.isEmpty());
+                if (teacher) { assertNotNull(recording.pending); }
+            } finally { close(game); }
+        }
+    }
+
+    @Test public void originalExceptionLeavesAnIncompleteRecordAndOtherControllerHealthy() {
+        Recording recording = new Recording();
+        Recording healthy = new Recording();
+        Game game = fixture((p, l) -> new PlayerControllerTeacher(p.getGame(), p, l,
+                p.getName().equals("first") ? recording : healthy), 3);
+        try {
+            Player actor = game.getPlayers().get(0);
+            var before = OriginalCompositeChoice.observe(game);
+            var error = expectThrows(IllegalArgumentException.class, () -> actor.getController().confirmAction(null, null, "missing ability", null));
+            assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), error);
+            assertTrue(recording.entries.isEmpty());
+            assertNotNull(recording.pending);
+            assertTrue(confirm(game.getPlayers().get(1)));
+            assertNotNull(recording.pending);
+            assertEquals(healthy.entries.size(), 1);
+            assertEquals(OriginalCompositeChoice.observe(game), before);
+        } finally { close(game); }
+    }
+
+    @Test public void callbackExceptionsArePersistentAndLocalToTheirController() {
+        for (String stage : List.of("before", "after", "client")) {
+            RuntimeException failure = new IllegalStateException("confirmation callback " + stage);
+            Recording stopped = new Recording() {
+                @Override public void before(Map<String, Object> request) {
+                    super.before(request);
+                    if (stage.equals("before")) { throw failure; }
+                }
+                @Override public void after(List<Integer> answer) { throw failure; }
+            };
+            Recording healthy = new Recording();
+            Game game = fixture((p, l) -> {
+                if (stage.equals("client")) {
+                    return new PlayerControllerRl(p.getGame(), p, l, request -> {
+                        if (p.getName().equals("first")) { throw failure; }
+                        return List.of(1);
+                    });
+                }
+                return new PlayerControllerTeacher(p.getGame(), p, l, p.getName().equals("first") ? stopped : healthy);
+            }, 3);
+            try {
+                Player actor = game.getPlayers().get(0);
+                var before = OriginalCompositeChoice.observe(game);
+                assertSame(expectThrows(RuntimeException.class, () -> confirm(actor)), failure);
+                assertSame(expectThrows(RuntimeException.class, actor.getController()::awaitNextInput), failure);
+                assertTrue(stopped.entries.isEmpty());
+                assertTrue(confirm(game.getPlayers().get(1)));
+                assertEquals(OriginalCompositeChoice.observe(game), before);
+                if (!stage.equals("client")) {
+                    assertNotNull(stopped.pending);
+                    assertNull(healthy.pending);
+                    assertEquals(healthy.entries.size(), 1);
+                }
+            } finally { close(game); }
+        }
+    }
+
+    @Test public void pendingExecutionRejectsConfirmationBeforeAnotherQuestion() {
+        for (boolean teacher : List.of(false, true)) {
+            Recording recording = new Recording();
+            int[] calls = {0};
+            var setup = BasicLandPriorityTest.fixture(teacher ? new LobbyPlayerTeacher("first", recording)
+                    : new LobbyPlayerRl("first", request -> { calls[0]++; return List.of(1); }));
+            var controller = setup.player().getController();
+            try {
+                assertNotNull(controller.chooseSpellAbilityToPlay());
+                var error = expectThrows(IllegalStateException.class, () -> controller.confirmAction(null, null, "pending", null));
+                assertSame(expectThrows(RuntimeException.class, controller::awaitNextInput), error);
+                assertEquals(teacher ? recording.entries.size() : calls[0], 1);
+                assertTrue(setup.forest().isInZone(ZoneType.Hand));
+            } finally {
+                if (teacher) { ((PlayerControllerTeacher) controller).closeObservation(); }
+                else { ((PlayerControllerRl) controller).closeObservation(); }
+            }
+        }
+    }
+
+    @Test public void nestedCallbacksCannotCompleteAConfirmationEvenWhenTheyCatchTheError() {
+        for (String stage : List.of("observe", "before", "after", "client")) {
+            Player[] actor = {null};
+            RuntimeException[] nested = {null};
+            Runnable reenter = () -> nested[0] = expectThrows(RuntimeException.class, () -> confirm(actor[0]));
+            Recording recording = new Recording() {
+                @Override public void observe(StateReader reader) { if (stage.equals("observe")) { reenter.run(); } }
+                @Override public void before(Map<String, Object> request) {
+                    super.before(request);
+                    if (stage.equals("before")) { reenter.run(); }
+                }
+                @Override public void after(List<Integer> answer) {
+                    if (stage.equals("after")) { reenter.run(); }
+                    else { super.after(answer); }
+                }
+            };
+            int[] calls = {0};
+            Game game = fixture((p, l) -> stage.equals("client") ? new PlayerControllerRl(p.getGame(), p, l, request -> {
+                calls[0]++;
+                reenter.run();
+                return List.of(1);
+            }) : new PlayerControllerTeacher(p.getGame(), p, l, recording), 3);
+            try {
+                actor[0] = game.getPlayers().get(0);
+                var before = OriginalCompositeChoice.observe(game);
+                var error = expectThrows(RuntimeException.class, () -> confirm(actor[0]));
+                assertSame(error, nested[0]);
+                assertSame(expectThrows(RuntimeException.class, actor[0].getController()::awaitNextInput), error);
+                assertTrue(recording.entries.isEmpty());
+                assertEquals(calls[0], stage.equals("client") ? 1 : 0);
+                if (stage.equals("observe")) { assertNull(recording.pending); }
+                assertEquals(OriginalCompositeChoice.observe(game), before);
+            } finally { close(game); }
+        }
+    }
+
+    @Test public void selectionCallbacksCannotOpenAConfirmation() {
+        for (boolean teacher : List.of(false, true)) {
+            for (String stage : List.of("observe", "answer")) {
+                Player[] actor = {null};
+                RuntimeException[] nested = {null};
+                int[] questions = {0};
+                Runnable reenter = () -> nested[0] = expectThrows(RuntimeException.class, () -> confirm(actor[0]));
+                Recording recording = new Recording() {
+                    @Override public void observe(StateReader reader) { if (stage.equals("observe")) { reenter.run(); } }
+                    @Override public void before(Map<String, Object> request) {
+                        questions[0]++;
+                        super.before(request);
+                        if (stage.equals("answer")) { reenter.run(); }
+                    }
+                };
+                IPlayerDecisionCallback callback = new IPlayerDecisionCallback() {
+                    @Override public void observe(StateReader reader) { if (stage.equals("observe")) { reenter.run(); } }
+                    @Override public List<Integer> choose(Map<String, Object> request) {
+                        questions[0]++;
+                        reenter.run();
+                        return List.of(0);
+                    }
+                };
+                Game game = fixture((p, l) -> teacher ? new PlayerControllerTeacher(p.getGame(), p, l, recording)
+                        : new PlayerControllerRl(p.getGame(), p, l, callback), 3);
+                try {
+                    actor[0] = game.getPlayers().get(0);
+                    var sa = AbilityFactory.getAbility("DB$ ChooseCard", actor[0].getCardsIn(ZoneType.Battlefield).getFirst());
+                    sa.setActivatingPlayer(actor[0]);
+                    var before = OriginalCompositeChoice.observe(game);
+                    var error = expectThrows(RuntimeException.class, () -> actor[0].getController().chooseCardsForEffect(
+                            actor[0].getCardsIn(ZoneType.Battlefield), sa, "one", 1, 1, false, null));
+                    assertSame(error, nested[0]);
+                    assertEquals(questions[0], stage.equals("observe") ? 0 : 1);
+                    assertTrue(recording.entries.isEmpty());
+                    assertSame(expectThrows(RuntimeException.class, actor[0].getController()::awaitNextInput), error);
+                    assertEquals(OriginalCompositeChoice.observe(game), before);
+                } finally { close(game); }
+            }
         }
     }
 }

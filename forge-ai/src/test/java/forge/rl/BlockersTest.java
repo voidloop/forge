@@ -133,9 +133,9 @@ public class BlockersTest {
         final List<Map<String, Object>> requests = new ArrayList<>();
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
-        @Override public void after(List<Integer> result) {
-            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
+        @Override public void after(List<Integer> answer) {
+            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
     }
 
@@ -154,12 +154,12 @@ public class BlockersTest {
             assertEquals(run(teacher), expected, "Teacher changed combat facts or RNG");
             assertNull(recording.pending);
             assertEquals(recording.answers.get(2), expected.pairs());
-            Map<?, ?> data = (Map<?, ?>) recording.requests.get(2).get("question");
-            assertEquals(data.get("kind"), "declare_blockers");
-            assertEquals(((List<?>) data.get("items")).size(), scenario == 0 ? 1 : 3);
+            Map<?, ?> options = (Map<?, ?>) recording.requests.get(2).get("question");
+            assertEquals(options.get("kind"), "declare_blockers");
+            assertEquals(((List<?>) options.get("items")).size(), scenario == 0 ? 1 : 3);
             int[] position = {0};
-            IPlayerDecisionCallback callback = req -> {
-                assertEquals(req, recording.requests.get(position[0]));
+            IPlayerDecisionCallback callback = request -> {
+                assertEquals(request, recording.requests.get(position[0]));
                 return recording.answers.get(position[0]++);
             };
             var replay = fixture(new LobbyPlayerRl("first", callback), new LobbyPlayerRl("second", callback), scenario);
@@ -173,10 +173,10 @@ public class BlockersTest {
         }
     }
 
-    @Test public void nativeLoopSkipsRequestWhenNoCreatureCanBlock() {
+    @Test public void nativeLoopSkipsQuestionWhenNoCreatureCanBlock() {
         var kinds = new ArrayList<Object>();
-        IPlayerDecisionCallback callback = req -> {
-            kinds.add(((Map<?, ?>) req.get("question")).get("kind")); return List.of(0);
+        IPlayerDecisionCallback callback = request -> {
+            kinds.add(((Map<?, ?>) request.get("question")).get("kind")); return List.of(0);
         };
         var f = fixture(new LobbyPlayerRl("first", callback), new LobbyPlayerRl("second", callback), 1);
         f.blockers().forEach(c -> c.setTapped(true));
@@ -191,7 +191,7 @@ public class BlockersTest {
 
     @Test public void invalidStaleAndForeignAssignmentsStopTheController() {
         for (List<Integer> answer : List.of(List.of(0), List.of(0, 2), List.of(3, 0), List.of(0, 0, 0, 1), List.of(-1, 0))) {
-            var f = fixture(new LobbyPlayerAi("first", null), new LobbyPlayerRl("second", req -> answer), 1);
+            var f = fixture(new LobbyPlayerAi("first", null), new LobbyPlayerRl("second", request -> answer), 1);
             direct(f);
             assertThrows(IllegalArgumentException.class, () -> f.defender().getController().declareBlockers(f.defender(), f.game().getCombat()));
             assertTrue(f.game().getCombat().getAllBlockers().isEmpty());
@@ -237,7 +237,7 @@ public class BlockersTest {
                     f.game().getCombat().removeFromCombat(offered);
                     f.game().getCombat().addAttacker(lki, f.defender());
                 } else { f.game().getCombat().addBlocker(f.attackers().get(0), lki); }
-                assertThrows(IllegalArgumentException.class, () -> request.encode( null));
+                assertThrows(IllegalArgumentException.class, () -> request.encode(null));
             } finally { view.close(); }
         }
     }
@@ -247,7 +247,7 @@ public class BlockersTest {
         var test = new BlockersTest();
         test.publicBoundaryCapturesFinalBlocksWithoutChangingOriginal();
         test.teacherAndReplayUseFinalPairsInNativeLoop();
-        test.nativeLoopSkipsRequestWhenNoCreatureCanBlock();
+        test.nativeLoopSkipsQuestionWhenNoCreatureCanBlock();
         test.invalidStaleAndForeignAssignmentsStopTheController();
         test.finalConfigurationRejectsLkiBlockerAndAttackerWithSameId();
         System.out.println("PASS: native blockers public boundary, teacher neutrality and replay verified");

@@ -106,13 +106,13 @@ public class TargetedCastingTest {
         Map<String, Object> pending;
         Map<String, Object> execution;
         boolean executing;
-        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
-        @Override public void after(List<Integer> result) {
+        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
+        @Override public void after(List<Integer> answer) {
             assertNotNull(pending);
-            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
         @Override public void beginExecution() { assertFalse(executing); executing = true; }
-        @Override public void executed(Map<String, Object> data) { assertTrue(executing); execution = data; executing = false; }
+        @Override public void executed(Map<String, Object> result) { assertTrue(executing); execution = result; executing = false; }
     }
 
     private record Outcome(List<Object> facts, List<String> spent, List<Integer> activated,
@@ -201,8 +201,8 @@ public class TargetedCastingTest {
                 int[] position = {0};
                 int[] executions = {0};
                 IPlayerDecisionCallback callback = new IPlayerDecisionCallback() {
-                    @Override public List<Integer> choose(Map<String, Object> req) {
-                        assertEquals(req, recording.requests.get(position[0]));
+                    @Override public List<Integer> choose(Map<String, Object> request) {
+                        assertEquals(request, recording.requests.get(position[0]));
                         return recording.answers.get(position[0]++);
                     }
                     @Override public void executed(Map<String, Object> value) {
@@ -240,11 +240,11 @@ public class TargetedCastingTest {
             for (List<Integer> payment : List.of(List.of(1, 1, 3, 3), List.of(1, 2, 0, 2, 0, 2))) {
                 List<Map<String, Object>> results = new ArrayList<>();
                 var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
-                    @Override public List<Integer> choose(Map<String, Object> req) {
-                        return "mana_payment".equals(((Map<?, ?>) req.get("question")).get("kind"))
-                                ? payment : castAnswer(req, name.equals("Sear") ? 1 : 3);
+                    @Override public List<Integer> choose(Map<String, Object> request) {
+                        return "mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind"))
+                                ? payment : castAnswer(request, name.equals("Sear") ? 1 : 3);
                     }
-                    @Override public void executed(Map<String, Object> data) { results.add(data); }
+                    @Override public void executed(Map<String, Object> result) { results.add(result); }
                 }), true, name);
                 var controller = f.player().getController();
                 SpellAbility chosen = controller.chooseSpellAbilityToPlay().get(0);
@@ -265,13 +265,13 @@ public class TargetedCastingTest {
             List<Map<String, Object>> results = new ArrayList<>();
             int[] payments = {0};
             var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
-                @Override public List<Integer> choose(Map<String, Object> req) {
-                    if ("mana_payment".equals(((Map<?, ?>) req.get("question")).get("kind"))) {
+                @Override public List<Integer> choose(Map<String, Object> request) {
+                    if ("mana_payment".equals(((Map<?, ?>) request.get("question")).get("kind"))) {
                         payments[0]++; return List.of(0, 0);
                     }
-                    return castAnswer(req, cancelTarget ? -1 : name.equals("Sear") ? 1 : 3);
+                    return castAnswer(request, cancelTarget ? -1 : name.equals("Sear") ? 1 : 3);
                 }
-                @Override public void executed(Map<String, Object> data) { results.add(data); }
+                @Override public void executed(Map<String, Object> result) { results.add(result); }
             }), true, name);
             var controller = f.player().getController();
             assertFalse(controller.playChosenSpellAbility(controller.chooseSpellAbilityToPlay().get(0)));
@@ -292,8 +292,8 @@ public class TargetedCastingTest {
         for (boolean copy : List.of(false, true)) {
             List<Map<String, Object>> results = new ArrayList<>();
             var f = fixture(new LobbyPlayerRl("first", new IPlayerDecisionCallback() {
-                @Override public List<Integer> choose(Map<String, Object> req) { return castAnswer(req, name.equals("Sear") ? 1 : 3); }
-                @Override public void executed(Map<String, Object> data) { results.add(data); }
+                @Override public List<Integer> choose(Map<String, Object> request) { return castAnswer(request, name.equals("Sear") ? 1 : 3); }
+                @Override public void executed(Map<String, Object> result) { results.add(result); }
             }), true, name);
             var controller = f.player().getController();
             var selected = controller.chooseSpellAbilityToPlay().get(0);
@@ -309,7 +309,7 @@ public class TargetedCastingTest {
             close(f);
         }
         for (List<Integer> answer : List.of(List.of(1), List.of(1, 4), List.of(1, -2), List.of(0, 1))) {
-            var f = fixture(new LobbyPlayerRl("first", req -> answer), true, name);
+            var f = fixture(new LobbyPlayerRl("first", request -> answer), true, name);
             assertThrows(IllegalArgumentException.class, f.player().getController()::chooseSpellAbilityToPlay);
             assertTrue(f.game().getStack().isEmpty()); close(f);
         }

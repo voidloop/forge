@@ -100,9 +100,9 @@ public class AttackersTest {
         final List<Map<String, Object>> requests = new ArrayList<>();
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
-        @Override public void after(List<Integer> result) {
-            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
+        @Override public void after(List<Integer> answer) {
+            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
     }
 
@@ -121,19 +121,32 @@ public class AttackersTest {
     }
 
     @Test public void teacherAndReplayUseFinalPairsAndNativePhaseTaps() {
-        int actorIndex = 0;
-        Recording recording = new Recording();
-        var teacher = fixture(new LobbyPlayerTeacher("first", recording), false);
-        second(teacher, true, recording, null);
-        run(teacher);
-        assertEquals(((Map<?, ?>) recording.requests.get(2).get("question")).get("kind"), "declare_attackers");
-        
-        int[] position = {0};
-        IPlayerDecisionCallback callback = req -> recording.answers.get(position[0]++);
-        var replay = fixture(new LobbyPlayerRl("first", callback), false);
-        second(replay, false, null, callback);
-        run(replay);
-        close(teacher); close(replay);
+        for (boolean guarded : List.of(false, true)) {
+            Result expected = run(fixture(new LobbyPlayerAi("first", null), guarded));
+            Recording recording = new Recording();
+            var teacher = fixture(new LobbyPlayerTeacher("first", recording), guarded);
+            second(teacher, true, recording, null);
+            assertEquals(run(teacher), expected, "Teacher changed combat facts or RNG");
+            assertNull(recording.pending);
+            assertEquals(recording.answers.get(2), guarded ? List.of() : List.of(0, 0, 1, 0));
+            assertEquals(((Map<?, ?>) recording.requests.get(2).get("question")).get("kind"), "declare_attackers");
+            assertEquals(((List<?>) ((Map<?, ?>) recording.requests.get(2).get("question")).get("items")).size(), 2);
+            int[] position = {0};
+            IPlayerDecisionCallback callback = request -> {
+                assertEquals(request, recording.requests.get(position[0]));
+                return recording.answers.get(position[0]++);
+            };
+            var replay = fixture(new LobbyPlayerRl("first", callback), guarded);
+            second(replay, false, null, callback);
+            assertNotSame(replay.creatures().get(0), teacher.creatures().get(0));
+            Result applied = run(replay);
+            assertEquals(applied.facts(), expected.facts());
+            assertEquals(applied.attackers(), expected.attackers());
+            assertEquals(applied.defenders(), expected.defenders());
+            assertEquals(applied.events(), expected.events());
+            assertEquals(position[0], guarded ? 3 : 4);
+            close(teacher); close(replay);
+        }
     }
 
     private static void direct(Fixture f) {
@@ -143,8 +156,8 @@ public class AttackersTest {
 
     @Test public void nativeLoopSkipsDeclarationWhenNoCreatureCanAttack() {
         var kinds = new ArrayList<Object>();
-        IPlayerDecisionCallback callback = req -> {
-            kinds.add(((Map<?, ?>) req.get("question")).get("kind"));
+        IPlayerDecisionCallback callback = request -> {
+            kinds.add(((Map<?, ?>) request.get("question")).get("kind"));
             return List.of(0);
         };
         var f = fixture(new LobbyPlayerRl("first", callback), false);
@@ -167,13 +180,13 @@ public class AttackersTest {
             assertNotSame(lki, offered);
             assertEquals(lki, offered);
             f.game().getCombat().addAttacker(lki, f.game().getPlayers().get(1));
-            assertThrows(IllegalArgumentException.class, () -> request.encode( null));
+            assertThrows(IllegalArgumentException.class, () -> request.encode(null));
         } finally { view.close(); }
     }
 
     @Test public void invalidAndStalePairsStopBeforeAddingAttackers() {
         for (List<Integer> answer : List.of(List.of(0), List.of(0, 1), List.of(2, 0), List.of(0, 0, 0, 0), List.of(-1, 0))) {
-            var f = fixture(new LobbyPlayerRl("first", req -> answer), false);
+            var f = fixture(new LobbyPlayerRl("first", request -> answer), false);
             direct(f);
             var controller = f.actor().getController();
             assertThrows(IllegalArgumentException.class, () -> controller.declareAttackers(f.actor(), f.game().getCombat()));

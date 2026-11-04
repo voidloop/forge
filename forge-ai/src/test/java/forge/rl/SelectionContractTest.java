@@ -40,13 +40,13 @@ public class SelectionContractTest {
     private static class Recording implements IDecisionRecordCallback {
         final List<Entry> entries = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) {
-            assertNull(pending, "Nested native calls emitted a second request");
-            pending = data;
+        @Override public void before(Map<String, Object> request) {
+            assertNull(pending, "Nested native calls emitted a second question");
+            pending = request;
         }
-        @Override public void after(List<Integer> result) {
+        @Override public void after(List<Integer> answer) {
             assertNotNull(pending);
-            entries.add(new Entry(pending, List.copyOf(result)));
+            entries.add(new Entry(pending, List.copyOf(answer)));
             pending = null;
         }
     }
@@ -148,19 +148,19 @@ public class SelectionContractTest {
             assertNull(recording.pending);
             assertEquals(recording.entries.size(), 16);
             for (int offset : List.of(0, 8)) {
-                var req = (Map<?, ?>) recording.entries.get(offset + 4).request().get("question");
-                assertEquals(req.get("min"), 2);
-                assertEquals(req.get("max"), 2);
-                var items = (List<?>) req.get("items");
+                var options = (Map<?, ?>) recording.entries.get(offset + 2).request().get("question");
+                assertEquals(options.get("min"), 2);
+                assertEquals(options.get("max"), 2);
+                var items = (List<?>) options.get("items");
                 assertEquals(((Map<?, ?>) items.get(0)).get("name"), ((Map<?, ?>) items.get(1)).get("name"));
                 assertNotEquals(((Map<?, ?>) items.get(0)).get("key"), ((Map<?, ?>) items.get(1)).get("key"));
                 assertEquals(recording.entries.get(offset + 4).answer(), List.of());
             }
             String saved = recording.entries.toString();
             int[] cursor = {0};
-            Game client = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
+            Game client = fixture((p, l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
                 Entry entry = recording.entries.get(cursor[0]++);
-                assertEquals(req, entry.request());
+                assertEquals(request, entry.request());
                 return entry.answer();
             }));
             try {
@@ -175,7 +175,7 @@ public class SelectionContractTest {
         } finally { close(teacher); }
     }
 
-    @Test public void rejectsNoncurrentObjectsMetadataAndInvalidBoundsBeforeRequest() {
+    @Test public void rejectsNoncurrentObjectsMetadataAndInvalidBoundsBeforeQuestion() {
         for (boolean teacher : List.of(false, true)) {
             for (String invalid : List.of("copy", "unbound", "foreign_card", "copied_player", "foreign_player", "related_copy",
                     "library", "opponent_hand", "face_down", "reveal", "params", "negative", "reversed")) {
@@ -216,7 +216,7 @@ public class SelectionContractTest {
         }
     }
 
-    @Test public void selectionsRejectPendingNativeExecutionBeforeAnotherRequest() {
+    @Test public void selectionsRejectPendingNativeExecutionBeforeAnotherQuestion() {
         for (boolean teacher : List.of(false, true)) {
             for (String kind : List.of("single_entity", "cards", "entities")) {
                 Recording recording = new Recording();
@@ -269,11 +269,11 @@ public class SelectionContractTest {
         for (String stage : List.of("before", "after", "client")) {
             RuntimeException failure = new IllegalStateException("selection callback " + stage);
             Recording stopped = new Recording() {
-                @Override public void before(Map<String, Object> data) {
-                    super.before(data);
+                @Override public void before(Map<String, Object> request) {
+                    super.before(request);
                     if (stage.equals("before")) { throw failure; }
                 }
-                @Override public void after(List<Integer> result) { throw failure; }
+                @Override public void after(List<Integer> answer) { throw failure; }
             };
             Recording healthy = new Recording();
             Game game = fixture((p, l) -> {

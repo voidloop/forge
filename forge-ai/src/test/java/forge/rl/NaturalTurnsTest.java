@@ -15,7 +15,6 @@ import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 import forge.rl.decisions.CleanupRequests;
 import forge.rl.decisions.SelectionExecutor;
-import forge.rl.decisions.SelectionRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -56,6 +55,7 @@ public class NaturalTurnsTest {
         Game game = new Match(rules, seats, "natural turns").createGame();
         for (Player p : game.getPlayers()) {
             p.setLife(20, null);
+            // Nine cards exercise the unchanged teacher's cleanup without forcing it to pass.
             p.setStartingHandSize(opening);
             for (int i = 0; i < 60; i++) {
                 var paper = StaticData.instance().getCommonCards().getCard(i % 2 == 0 ? "Forest" : "Island");
@@ -98,9 +98,9 @@ public class NaturalTurnsTest {
         final List<Map<String, Object>> requests = new ArrayList<>();
         final List<List<Integer>> answers = new ArrayList<>();
         Map<String, Object> pending;
-        @Override public void before(Map<String, Object> data) { assertNull(pending); pending = data; }
-        @Override public void after(List<Integer> result) {
-            requests.add(pending); answers.add(List.copyOf(result)); pending = null;
+        @Override public void before(Map<String, Object> request) { assertNull(pending); pending = request; }
+        @Override public void after(List<Integer> answer) {
+            requests.add(pending); answers.add(List.copyOf(answer)); pending = null;
         }
     }
     private static void close(Game game) {
@@ -142,9 +142,9 @@ public class NaturalTurnsTest {
     private static List<Object> discardFacts(Game game) {
         List<Object> facts = new ArrayList<>();
         for (Player player : game.getPlayers()) {
-            try (var view = new StateReader(player, 0L)) {
-                facts.add(view.snapshot());
-            }
+            var view = new StateReader(player, 0L);
+            try { facts.add(view.snapshot()); }
+            finally { view.close(); }
             facts.add(player.getCardsIn(ZoneType.Hand).stream().map(Card::getId).toList());
             facts.add(player.getCardsIn(ZoneType.Library).stream().map(Card::getId).toList());
         }
@@ -175,15 +175,15 @@ public class NaturalTurnsTest {
                     assertEquals(chooseDiscard(teacher, actor, count), expected);
                     assertNull(saved.pending);
                     assertEquals(saved.requests.size(), 1);
-                    var data = (Map<?, ?>) saved.requests.get(0).get("question");
-                    assertEquals(data.get("kind"), "discard_cleanup");
-                    assertEquals(data.get("min"), count);
-                    assertEquals(data.get("max"), count);
-                    assertEquals(data.get("optional"), false);
-                    assertEquals(((List<?>) data.get("items")).size(), 7);
+                    var options = (Map<?, ?>) saved.requests.get(0).get("question");
+                    assertEquals(options.get("kind"), "discard_cleanup");
+                    assertEquals(options.get("min"), count);
+                    assertEquals(options.get("max"), count);
+                    assertEquals(options.get("optional"), false);
+                    assertEquals(((List<?>) options.get("items")).size(), 7);
                     int[] calls = {0};
-                    Game replay = contractFixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-                        assertEquals(req, saved.requests.get(0));
+                    Game replay = contractFixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+                        assertEquals(request, saved.requests.get(0));
                         calls[0]++;
                         return saved.answers.get(0);
                     }), context);
@@ -201,8 +201,9 @@ public class NaturalTurnsTest {
         Game game = contractFixture((p,l) -> new PlayerControllerAi(p.getGame(), p, l), "play");
         Game foreign = contractFixture((p,l) -> new PlayerControllerAi(p.getGame(), p, l), "play");
         Player player = game.getPlayers().get(0);
+        var view = new StateReader(player, 0L);
         try {
-            SelectionRequest<Card> request = CleanupRequests.create(player, 2);
+            var request = CleanupRequests.create(player, 2);
             var hand = player.getCardsIn(ZoneType.Hand);
             assertEquals(request.encode(List.of(hand.get(1), hand.get(0))), List.of(1, 0));
             var result = new SelectionExecutor<>(request, List.of(1, 0)).apply();
@@ -215,24 +216,136 @@ public class NaturalTurnsTest {
             for (List<Integer> invalid : List.of(List.<Integer>of(), List.of(0), List.of(0, 0), List.of(0, 7))) {
                 assertThrows(IllegalArgumentException.class, () -> new SelectionExecutor<>(request, invalid).apply());
             }
-        } finally { close(game); close(foreign); }
+        } finally { view.close(); }
+    }
+
+    @Test public void originalCleanupFailureLeavesAnIncompleteRecord() {
+        Game baseline = contractFixture((p,l) -> new PlayerControllerAi(p.getGame(), p, l), "unstarted");
+        assertNull(baseline.getPhaseHandler().getPhase());
+        assertThrows(NullPointerException.class,
+                () -> baseline.getPlayers().get(0).getController().chooseCardsToDiscardToMaximumHandSize(1));
+        Recording saved = new Recording();
+        Game teacher = contractFixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), "unstarted");
+        var controller = teacher.getPlayers().get(0).getController();
+        var before = discardFacts(teacher);
+        var error = expectThrows(NullPointerException.class, () -> controller.chooseCardsToDiscardToMaximumHandSize(1));
+        assertNotNull(saved.pending);
+        assertTrue(saved.requests.isEmpty());
+        assertTrue(saved.answers.isEmpty());
+        assertEquals(discardFacts(teacher), before);
+        assertSame(expectThrows(NullPointerException.class,
+                () -> controller.chooseCardsToDiscardToMaximumHandSize(1)), error);
+        assertFalse(teacher.isGameOver());
+        close(teacher);
+    }
+
+    @Test public void invalidCleanupCountsStopBeforeAQuestionAndRemainPersistent() {
+        for (boolean teacher : List.of(false, true)) {
+            for (int count : List.of(-1, 0, 8)) {
+                int[] calls = {0};
+                Game game = contractFixture((p,l) -> teacher
+                        ? new PlayerControllerTeacher(p.getGame(), p, l, new Recording() {
+                            @Override public void before(Map<String, Object> request) { calls[0]++; super.before(request); }
+                        })
+                        : new PlayerControllerRl(p.getGame(), p, l, request -> { calls[0]++; return List.of(0); }), "play");
+                var controller = game.getPlayers().get(0).getController();
+                var error = expectThrows(IllegalArgumentException.class,
+                        () -> controller.chooseCardsToDiscardToMaximumHandSize(count));
+                assertSame(expectThrows(IllegalArgumentException.class,
+                        () -> controller.chooseCardsToDiscardToMaximumHandSize(1)), error);
+                assertEquals(calls[0], 0);
+                assertFalse(game.isGameOver());
+                close(game);
+            }
+        }
+    }
+
+    @Test public void cleanupRejectsNestedTeacherCallsAndPendingExecution() {
+        Game[] nested = {null};
+        Recording recording = new Recording() {
+            @Override public void before(Map<String, Object> request) {
+                super.before(request);
+                nested[0].getPlayers().get(0).getController().chooseCardsToDiscardToMaximumHandSize(1);
+            }
+        };
+        nested[0] = contractFixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, recording), "play");
+        var controller = nested[0].getPlayers().get(0).getController();
+        assertThrows(UnsupportedOperationException.class, () -> controller.chooseCardsToDiscardToMaximumHandSize(1));
+        assertNotNull(recording.pending);
+        assertTrue(recording.requests.isEmpty());
+        close(nested[0]);
+
+        for (boolean teacher : List.of(false, true)) {
+            Recording saved = new Recording();
+            int[] calls = {0};
+            Game game = contractFixture((p,l) -> teacher
+                    ? new PlayerControllerTeacher(p.getGame(), p, l, saved)
+                    : new PlayerControllerRl(p.getGame(), p, l, request -> { calls[0]++; return List.of(1); }), "play");
+            var current = game.getPlayers().get(0).getController();
+            assertNotNull(current.chooseSpellAbilityToPlay());
+            var error = expectThrows(IllegalStateException.class,
+                    () -> current.chooseCardsToDiscardToMaximumHandSize(1));
+            assertSame(expectThrows(IllegalStateException.class, current::chooseSpellAbilityToPlay), error);
+            assertEquals(teacher ? saved.requests.size() : calls[0], 1);
+            close(game);
+        }
+    }
+
+    @Test public void nativeTeacherTurnsAndCleanupReplay() {
+        for (int opening : List.of(7, 9)) {
+            var baseline = fixture((p,l) -> new PlayerControllerAi(p.getGame(), p, l), opening);
+            Outcome expected = run(baseline);
+            Recording saved = new Recording();
+            var teacher = fixture((p,l) -> new PlayerControllerTeacher(p.getGame(), p, l, saved), opening);
+            Outcome recorded = run(teacher);
+            assertTrue(recorded.trace().equals(expected.trace()), "Teacher changed native turn trace");
+            assertTrue(recorded.facts().equals(expected.facts()), "Teacher changed final facts");
+            assertEquals(recorded.random(), expected.random());
+            assertNull(saved.pending);
+            int discards = 0;
+            for (Map<String, Object> request : saved.requests) {
+                var options = (Map<?, ?>) request.get("question");
+                if (options.get("kind").equals("discard_cleanup")) {
+                    discards++;
+                    assertEquals(options.get("min"), options.get("max"));
+                    assertEquals(((Map<?, ?>) ((Map<?, ?>) request.get("state")).get("game")).get("phase"), "CLEANUP");
+                }
+            }
+            assertEquals(discards > 0, opening == 9);
+            for (Player p : teacher.getPlayers()) {
+                assertEquals(p.getCardsIn(ZoneType.Battlefield).size(), 2);
+                // The starting player skips its first draw; the other draws on both turns.
+                assertEquals(p.getCardsIn(ZoneType.Library).size(), 60 - opening - (p == teacher.getStartingPlayer() ? 1 : 2));
+            }
+            int[] position = {0};
+            var replay = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+                assertEquals(request, saved.requests.get(position[0]));
+                return saved.answers.get(position[0]++);
+            }), opening);
+            assertNotSame(teacher.getPlayers().get(0), replay.getPlayers().get(0));
+            Outcome replayed = run(replay);
+            assertTrue(replayed.trace().equals(expected.trace()), "Replay changed native turn trace");
+            assertTrue(replayed.facts().equals(expected.facts()), "Replay changed final facts");
+            assertEquals(position[0], saved.requests.size());
+            close(teacher); close(replay);
+        }
     }
 
     @Test public void ordinaryClientCanPassIntoCleanupAndInvalidDiscardStops() {
         int[] discards = {0};
-        var game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, req -> {
-            var data = (Map<?, ?>) req.get("question");
-            switch ((String) data.get("kind")) {
+        var game = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, request -> {
+            var options = (Map<?, ?>) request.get("question");
+            switch ((String) options.get("kind")) {
                 case "starting_player": return List.of(0);
                 case "mulligan_keep": return List.of(1);
                 case "priority":
                     return List.of(p.getCardsIn(ZoneType.Battlefield).isEmpty()
-                            && ((List<?>) data.get("items")).size() > 1 ? 1 : 0);
+                            && ((List<?>) options.get("items")).size() > 1 ? 1 : 0);
                 case "discard_cleanup":
                     discards[0]++;
-                    int count = (Integer) data.get("min");
+                    int count = (Integer) options.get("min");
                     return java.util.stream.IntStream.range(0, count).boxed().toList();
-                default: throw new AssertionError(data);
+                default: throw new AssertionError(options);
             }
         }), 7);
         run(game);
@@ -243,5 +356,26 @@ public class NaturalTurnsTest {
         }
         assertEquals(game.getCardsIn(ZoneType.Graveyard).size(), 1);
         close(game);
+
+        var failed = fixture((p,l) -> new PlayerControllerRl(p.getGame(), p, l, r -> List.of()), 7);
+        Player p = failed.getPlayers().get(0);
+        assertThrows(IllegalArgumentException.class, () -> p.getController().chooseCardsToDiscardToMaximumHandSize(1));
+        assertThrows(IllegalArgumentException.class, () -> p.getController().autoPassCancel());
+        assertFalse(failed.isGameOver()); close(failed);
+    }
+
+    public static void main(String[] args) {
+        OriginalCompositeChoice.initialize(Path.of(args[0]));
+        var test = new NaturalTurnsTest();
+        StaticData.instance().setFilteredHandsEnabled(false);
+        StaticData.instance().setMulliganRule(MulliganDefs.MulliganRule.London);
+        test.cleanupSelectionUsesTheSuppliedCountAndCurrentHand();
+        test.cleanupBindingsUseExactCardsAndPreserveAnswerOrder();
+        test.originalCleanupFailureLeavesAnIncompleteRecord();
+        test.invalidCleanupCountsStopBeforeAQuestionAndRemainPersistent();
+        test.cleanupRejectsNestedTeacherCallsAndPendingExecution();
+        test.nativeTeacherTurnsAndCleanupReplay();
+        test.ordinaryClientCanPassIntoCleanupAndInvalidDiscardStops();
+        System.out.println("PASS: native land turns, cleanup, teacher state/RNG and replay verified");
     }
 }

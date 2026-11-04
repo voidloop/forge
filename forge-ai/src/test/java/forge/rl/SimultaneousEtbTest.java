@@ -162,12 +162,12 @@ public class SimultaneousEtbTest {
             int[] position = {0};
             int[] executions = {0};
             var callback = new IPlayerDecisionCallback() {
-                @Override public List<Integer> choose(Map<String, Object> req) {
-                    assertEquals(req, recording.requests.get(position[0]));
+                @Override public List<Integer> choose(Map<String, Object> request) {
+                    assertEquals(request, recording.requests.get(position[0]));
                     return recording.answers.get(position[0]++);
                 }
-                @Override public void executed(Map<String, Object> data) {
-                    assertEquals(data, recording.execution); executions[0]++;
+                @Override public void executed(Map<String, Object> result) {
+                    assertEquals(result, recording.execution); executions[0]++;
                 }
             };
             var replay = fixture(new LobbyPlayerRl("first", callback), mixed);
@@ -205,10 +205,10 @@ public class SimultaneousEtbTest {
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), wrappers);
-            assertThrows(IllegalStateException.class, () -> request.encode( null));
+            assertThrows(IllegalStateException.class, () -> request.encode(null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
-            assertEquals(request.encode( null), answer);
+            assertEquals(request.encode(null), answer);
             var stack = new ArrayList<SpellAbility>();
             f.game().getStack().forEach(entry -> stack.add(entry.getSpellAbility()));
             assertSame(stack.get(0), wrappers.get(answer.get(1)));
@@ -268,8 +268,8 @@ public class SimultaneousEtbTest {
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
-            assertEquals(request.encode(0), List.of(0));
-            var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), req -> {
+            assertEquals(request.encode(null), List.of(0));
+            var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
                 throw new AssertionError("Automatic effect requested another decision");
             });
             f.player().dangerouslySetController(controller);
