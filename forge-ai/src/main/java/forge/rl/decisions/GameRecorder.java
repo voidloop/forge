@@ -8,8 +8,8 @@ import forge.rl.requests.DecisionRequest;
 
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Supplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * External lifecycle manager for game decision recording.
@@ -17,8 +17,9 @@ import java.util.function.Function;
 public final class GameRecorder {
     private final Player player;
     private final IDecisionRecordCallback callback;
-    private final Context context = new Context();
     private final StateReader session;
+    private SpellAbility activeAbility;
+    private String activeKind;
     private boolean sessionStarted;
     private RuntimeException failure;
 
@@ -56,9 +57,7 @@ public final class GameRecorder {
     }
 
     public <R extends DecisionRequest, A> A record(Decision<R> decision, Function<R, A> original) {
-        ensureSession();
-        R request = decision.prepare(player, session);
-        return recordPrepared(request, null, () -> original.apply(request));
+        return record(decision, null, original);
     }
 
     private void ensureSession() {
@@ -70,32 +69,33 @@ public final class GameRecorder {
     }
 
     public <A> A record(Decision<?> decision, SpellAbility ability, Supplier<A> original) {
-        ensureSession();
-        return recordPrepared(decision.prepare(player, session), ability, original);
+        return record(decision, ability, request -> original.get());
     }
 
-    private <A> A recordPrepared(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
-        var question = (Map<?, ?>) request.data().get("question");
-        String name = (String) question.get("kind");
+    private <R extends DecisionRequest, A> A record(Decision<R> decision, SpellAbility ability,
+            Function<R, A> original) {
+        ensureSession();
+        R request = decision.prepare(player, session);
+        String name = decisionKind(request);
 
-        if (ability != null && context.activeKind != null) {
+        if (ability != null && activeKind != null) {
             if (isNestedSingleSelection(ability, name)) {
-                return original.get();
+                return original.apply(request);
             }
             throw new UnsupportedOperationException("Unexpected nested teacher selection");
         }
 
-        String previousKind = context.activeKind;
-        SpellAbility previousAbility = context.activeAbility;
+        String previousKind = activeKind;
+        SpellAbility previousAbility = activeAbility;
 
         try {
             if (ability != null) {
-                context.activeAbility = ability;
+                activeAbility = ability;
             }
-            context.activeKind = name;
+            activeKind = name;
 
             callback.before(request.data());
-            A answer = original.get();
+            A answer = original.apply(request);
             callback.after(request.encodeAnswer(answer));
 
             return answer;
@@ -103,19 +103,19 @@ public final class GameRecorder {
             fail(error);
             throw error;
         } finally {
-            context.activeKind = previousKind;
-            context.activeAbility = previousAbility;
+            activeKind = previousKind;
+            activeAbility = previousAbility;
         }
     }
 
     private boolean isNestedSingleSelection(SpellAbility ability, String kind) {
-        return context.activeAbility == ability && kind.equals("single_entity")
-                && (context.activeKind.equals("cards") || context.activeKind.equals("entities"));
+        return activeAbility == ability && kind.equals("single_entity")
+                && (activeKind.equals("cards") || activeKind.equals("entities"));
     }
 
-    private static final class Context {
-        private SpellAbility activeAbility;
-        private String activeKind;
+    private static String decisionKind(DecisionRequest request) {
+        var question = (Map<?, ?>) request.data().get("question");
+        return (String) question.get("kind");
     }
 
     public void recordExecuted(Function<StateReader, Map<String, Object>> result) {
