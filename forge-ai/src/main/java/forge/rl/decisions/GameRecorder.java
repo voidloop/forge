@@ -9,7 +9,6 @@ import forge.rl.requests.DecisionRequest;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * External lifecycle manager for game decision recording.
@@ -60,7 +59,7 @@ public final class GameRecorder {
         }
     }
 
-    public <R extends DecisionRequest, A> A record(Decision<R> decision, Supplier<A> original) {
+    public <R extends DecisionRequest, A> A record(Decision<R> decision, Function<R, A> original) {
         ensureSession();
         R request = decision.prepare(player, session);
         String name = decisionKind(request);
@@ -68,7 +67,7 @@ public final class GameRecorder {
 
         if (ability != null && activeKind != null) {
             if (isNestedSingleSelection(ability, name)) {
-                return original.get();
+                return original.apply(request);
             }
             throw new UnsupportedOperationException("Unexpected nested teacher selection");
         }
@@ -83,9 +82,7 @@ public final class GameRecorder {
             activeKind = name;
 
             callback.before(request.data());
-            decision.beforeOriginal(request);
-            A answer = original.get();
-            decision.afterOriginal(request, answer);
+            A answer = original.apply(request);
             callback.after(request.encodeAnswer(answer));
 
             return answer;

@@ -86,13 +86,13 @@ public class ManaActivationTest {
         });
         try {
             for (int i = 0; i < 2; i++) {
-                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(choice -> {
-                    assertEquals(calls[0], bindings[0] + 1, "Binding must follow the original call");
-                    assertSame(choice.ability.getHostCard(), fixture.land());
-                    bindings[0]++;
-                }), () -> {
+                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(), request -> {
                     calls[0]++;
-                    return List.of(0);
+                    var answerToRecord = List.of(0);
+                    assertEquals(calls[0], bindings[0] + 1, "Binding must follow the original call");
+                    assertSame(request.selected().ability.getHostCard(), fixture.land());
+                    bindings[0]++;
+                    return answerToRecord;
                 });
                 assertEquals(answer, List.of(0));
             }

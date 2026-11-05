@@ -11,7 +11,4 @@ interface Decision<R extends DecisionRequest> {
     /** Exact ability for the recorder's nested-selection scope, when applicable. */
     default SpellAbility ability() { return null; }
 
-    default void beforeOriginal(R request) { }
-
-    default void afterOriginal(R request, Object answer) { }
 }
