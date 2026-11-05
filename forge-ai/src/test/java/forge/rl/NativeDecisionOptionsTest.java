@@ -16,8 +16,8 @@ import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.util.collect.FCollection;
-import forge.rl.decisions.SelectionRequest;
-import forge.rl.decisions.SelectionExecutor;
+import forge.rl.requests.SelectionRequest;
+import forge.rl.requests.SelectionExecutor;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 import org.testng.annotations.BeforeClass;
@@ -181,7 +181,7 @@ public class NativeDecisionOptionsTest {
             String saved = request.data.toString();
             options.clear();
             fixture.first().setTapped(true);
-            List<Integer> answer = request.encode(List.of(other, fixture.first()));
+            List<Integer> answer = request.encodeAnswer(List.of(other, fixture.first()));
             assertEquals(answer, List.of(1, 0));
             var applied = new SelectionExecutor<>(request, answer).apply();
             assertSame(applied.get(0), other);
@@ -189,7 +189,7 @@ public class NativeDecisionOptionsTest {
             assertEquals(request.data.toString(), saved, "Native mutations changed a detached question");
             Fixture foreign = fixture(new forge.ai.LobbyPlayerAi("first", null));
             assertThrows(IllegalArgumentException.class,
-                    () -> request.encode(List.of(foreign.first(), other)));
+                    () -> request.encodeAnswer(List.of(foreign.first(), other)));
         } finally { view.close(); }
     }
 

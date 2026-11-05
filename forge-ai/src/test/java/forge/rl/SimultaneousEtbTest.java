@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.decisions.TriggerExecutor;
+import forge.rl.requests.TriggerExecutor;
 
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -11,7 +11,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerRequest;
+import forge.rl.requests.TriggerRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -205,10 +205,10 @@ public class SimultaneousEtbTest {
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), wrappers);
-            assertThrows(IllegalStateException.class, () -> request.encode(null));
+            assertThrows(IllegalStateException.class, () -> request.encodeAnswer(null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
-            assertEquals(request.encode(null), answer);
+            assertEquals(request.encodeAnswer(null), answer);
             var stack = new ArrayList<SpellAbility>();
             f.game().getStack().forEach(entry -> stack.add(entry.getSpellAbility()));
             assertSame(stack.get(0), wrappers.get(answer.get(1)));
@@ -268,7 +268,7 @@ public class SimultaneousEtbTest {
             var view = new StateReader(f.player(), 0L);
             var request = new TriggerRequest(f.player(), List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
-            assertEquals(request.encode(null), List.of(0));
+            assertEquals(request.encodeAnswer(null), List.of(0));
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
                 throw new AssertionError("Automatic effect requested another decision");
             });

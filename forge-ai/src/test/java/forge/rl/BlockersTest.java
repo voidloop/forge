@@ -9,7 +9,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.BlockersRequest;
+import forge.rl.requests.BlockersRequest;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventBlockersDeclared;
@@ -237,7 +237,7 @@ public class BlockersTest {
                     f.game().getCombat().removeFromCombat(offered);
                     f.game().getCombat().addAttacker(lki, f.defender());
                 } else { f.game().getCombat().addBlocker(f.attackers().get(0), lki); }
-                assertThrows(IllegalArgumentException.class, () -> request.encode(null));
+                assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(null));
             } finally { view.close(); }
         }
     }

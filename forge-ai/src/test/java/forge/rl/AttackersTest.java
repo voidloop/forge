@@ -9,7 +9,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.AttackersRequest;
+import forge.rl.requests.AttackersRequest;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventAttackersDeclared;
@@ -180,7 +180,7 @@ public class AttackersTest {
             assertNotSame(lki, offered);
             assertEquals(lki, offered);
             f.game().getCombat().addAttacker(lki, f.game().getPlayers().get(1));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(null));
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(null));
         } finally { view.close(); }
     }
 

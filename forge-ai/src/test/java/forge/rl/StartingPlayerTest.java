@@ -15,9 +15,9 @@ import forge.game.player.PlayerController;
 import forge.game.player.RegisteredPlayer;
 import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.DecisionExecutor;
-import forge.rl.decisions.StartingPlayerRequest;
-import forge.rl.decisions.StartingPlayerExecutor;
+import forge.rl.requests.DecisionExecutor;
+import forge.rl.requests.StartingPlayerRequest;
+import forge.rl.requests.StartingPlayerExecutor;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -310,18 +310,18 @@ public class StartingPlayerTest {
             var current = new StartingPlayerRequest(replay.getRegisteredPlayers().get(0), true);
             Player original = teacher.getPlayers().get(1);
             Player replacement = replay.getPlayers().get(1);
-            List<Integer> answer = recorded.encode(original);
+            List<Integer> answer = recorded.encodeAnswer(original);
             assertEquals(answer, List.of(1));
             assertThrows(UnsupportedOperationException.class, () -> answer.add(0));
             DecisionExecutor<Player> executor = new StartingPlayerExecutor(current, answer);
             assertNotSame(original, replacement);
             assertSame(executor.apply(), replacement);
-            assertThrows(IllegalArgumentException.class, () -> recorded.encode(replacement));
+            assertThrows(IllegalArgumentException.class, () -> recorded.encodeAnswer(replacement));
             assertThrows(IllegalArgumentException.class, () -> new StartingPlayerExecutor(current, List.of(0, 1)).apply());
-            assertEquals(recorded.encode(teacher.getPlayers().get(0)), List.of(0), "Recorder retained a previous answer");
-            assertEquals(current.encode(replacement), answer, "Recorder retained a previous request");
-            assertThrows(IllegalArgumentException.class, () -> current.encode(original));
-            assertEquals(recorded.encode(original), answer, "Replay changed the original recorder's bindings");
+            assertEquals(recorded.encodeAnswer(teacher.getPlayers().get(0)), List.of(0), "Recorder retained a previous answer");
+            assertEquals(current.encodeAnswer(replacement), answer, "Recorder retained a previous request");
+            assertThrows(IllegalArgumentException.class, () -> current.encodeAnswer(original));
+            assertEquals(recorded.encodeAnswer(original), answer, "Replay changed the original recorder's bindings");
         } finally { teacherView.close(); replayView.close(); }
     }
 

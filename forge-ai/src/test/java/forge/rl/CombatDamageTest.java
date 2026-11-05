@@ -1,7 +1,7 @@
 package forge.rl;
 
-import forge.rl.decisions.CombatDamageExecutor;
-import forge.rl.decisions.CombatGraveyardExecutor;
+import forge.rl.requests.CombatDamageExecutor;
+import forge.rl.requests.CombatGraveyardExecutor;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -10,8 +10,8 @@ import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
 import forge.game.card.CardCollection;
 import forge.game.card.CardCopyService;
-import forge.rl.decisions.CombatDamageRequest;
-import forge.rl.decisions.CombatGraveyardRequest;
+import forge.rl.requests.CombatDamageRequest;
+import forge.rl.requests.CombatGraveyardRequest;
 import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
 import forge.util.MyRandom;
@@ -213,9 +213,9 @@ public class CombatDamageTest {
                     f.game().getCombat().getAttackers(), 6, f.defender(), true);
             var lki = CardCopyService.getLKICopy(targets.get(0));
             assertEquals(lki, targets.get(0)); assertNotSame(lki, targets.get(0));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(Map.of(lki, 6)));
-            assertThrows(UnsupportedOperationException.class, () -> request.encode(null));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(Collections.singletonMap(null, 6)));
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(Map.of(lki, 6)));
+            assertThrows(UnsupportedOperationException.class, () -> request.encodeAnswer(null));
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(Collections.singletonMap(null, 6)));
             f.game().getCombat().removeFromCombat(targets.get(0));
             assertThrows(IllegalArgumentException.class, () -> new CombatDamageExecutor(request, List.of(0, 6)).apply());
         } finally { view.close(); }
@@ -231,14 +231,14 @@ public class CombatDamageTest {
             for (List<Integer> answer : List.of(List.of(0), List.of(0, 0), List.of(0, 2))) {
                 assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, answer).apply());
             }
-            assertThrows(IllegalArgumentException.class, () -> request.encode(new CardCollection(
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(new CardCollection(
                     List.of(CardCopyService.getLKICopy(dead.get(0)), dead.get(1)))));
             assertThrows(UnsupportedOperationException.class, () -> new CombatGraveyardRequest(f.defender(), dead, ZoneType.Library, null));
             dead.get(0).setDamage(0);
             assertThrows(IllegalArgumentException.class, () -> new CombatGraveyardExecutor(request, List.of(0, 1)).apply());
             dead.get(0).setDamage(2);
             f.game().getPhaseHandler().setCombat(new forge.game.combat.Combat(f.attackers().get(0).getController()));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(dead));
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(dead));
         } finally { view.close(); }
     }
 

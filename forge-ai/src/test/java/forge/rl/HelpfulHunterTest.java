@@ -10,8 +10,8 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.TriggerRequest;
-import forge.rl.decisions.PriorityRequest;
+import forge.rl.requests.TriggerRequest;
+import forge.rl.requests.PriorityRequest;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -236,7 +236,7 @@ public class HelpfulHunterTest {
         var request = new TriggerRequest(f.player(), List.of(wrapper));
         var other = new WrappedAbility(wrapper.getTrigger(), wrapper.getWrappedAbility().copy(), null);
         assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(other)));
-        assertThrows(IllegalStateException.class, () -> request.encode(null));
+        assertThrows(IllegalStateException.class, () -> request.encodeAnswer(null));
         Card source = wrapper.getHostCard();
         var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {
             f.player().getZone(ZoneType.Battlefield).remove(source);

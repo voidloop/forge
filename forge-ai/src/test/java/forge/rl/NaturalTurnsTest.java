@@ -13,8 +13,8 @@ import forge.game.phase.PhaseType;
 import forge.game.player.*;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.decisions.CleanupRequests;
-import forge.rl.decisions.SelectionExecutor;
+import forge.rl.requests.CleanupRequests;
+import forge.rl.requests.SelectionExecutor;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -205,13 +205,13 @@ public class NaturalTurnsTest {
         try {
             var request = CleanupRequests.create(player, 2);
             var hand = player.getCardsIn(ZoneType.Hand);
-            assertEquals(request.encode(List.of(hand.get(1), hand.get(0))), List.of(1, 0));
+            assertEquals(request.encodeAnswer(List.of(hand.get(1), hand.get(0))), List.of(1, 0));
             var result = new SelectionExecutor<>(request, List.of(1, 0)).apply();
             assertSame(result.get(0), hand.get(1));
             assertSame(result.get(1), hand.get(0));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(
                     List.of(CardCopyService.getLKICopy(hand.get(0)), hand.get(1))));
-            assertThrows(IllegalArgumentException.class, () -> request.encode(
+            assertThrows(IllegalArgumentException.class, () -> request.encodeAnswer(
                     List.of(foreign.getPlayers().get(0).getCardsIn(ZoneType.Hand).get(0), hand.get(1))));
             for (List<Integer> invalid : List.of(List.<Integer>of(), List.of(0), List.of(0, 0), List.of(0, 7))) {
                 assertThrows(IllegalArgumentException.class, () -> new SelectionExecutor<>(request, invalid).apply());

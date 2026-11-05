@@ -4,6 +4,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.rl.IDecisionRecordCallback;
 import forge.rl.StateReader;
+import forge.rl.requests.DecisionRequest;
 
 import java.util.Map;
 import java.util.Objects;
@@ -16,21 +17,19 @@ public final class GameRecorder {
     private final Player player;
     private final IDecisionRecordCallback callback;
     private final Context context = new Context();
-    private StateReader activeSession;
+    private final StateReader session;
+    private boolean sessionStarted;
     private RuntimeException failure;
 
     public GameRecorder(Player player, IDecisionRecordCallback callback) {
         this.player = Objects.requireNonNull(player);
         this.callback = Objects.requireNonNull(callback);
+        this.session = new StateReader(player, 0L);
     }
-
 
     public void close() {
         try {
-            if (activeSession != null) {
-                activeSession.close();
-                activeSession = null;
-            }
+            session.close();
             callback.close();
         } finally {
             if (failure == null) {
@@ -55,16 +54,29 @@ public final class GameRecorder {
         return record(request, null, original);
     }
 
+    public <A> A record(Decision decision, Supplier<A> original) {
+        return record(decision, null, original);
+    }
+
     private void ensureSession() {
         requireHealthy();
-        if (activeSession == null) {
-            activeSession = new StateReader(player, 0L);
-            callback.observe(activeSession);
+        if (!sessionStarted) {
+            callback.observe(session);
+            sessionStarted = true;
         }
     }
 
     public <A> A record(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
         ensureSession();
+        return recordPrepared(request, ability, original);
+    }
+
+    public <A> A record(Decision decision, SpellAbility ability, Supplier<A> original) {
+        ensureSession();
+        return recordPrepared(decision.prepare(player, session), ability, original);
+    }
+
+    private <A> A recordPrepared(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
         var question = (Map<?, ?>) request.data().get("question");
         String name = (String) question.get("kind");
 
@@ -86,7 +98,7 @@ public final class GameRecorder {
 
             callback.before(request.data());
             A answer = original.get();
-            callback.after(request.encode(answer));
+            callback.after(request.encodeAnswer(answer));
 
             return answer;
         } catch (RuntimeException error) {
