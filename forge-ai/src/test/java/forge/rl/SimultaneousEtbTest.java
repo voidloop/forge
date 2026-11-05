@@ -1,6 +1,6 @@
 package forge.rl;
 
-import forge.rl.requests.TriggerExecutor;
+import forge.rl.decision.context.TriggerExecutor;
 
 import forge.LobbyPlayer;
 import forge.ai.LobbyPlayerAi;
@@ -11,7 +11,7 @@ import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.requests.TriggerRequest;
+import forge.rl.decision.context.TriggerContext;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -204,7 +204,7 @@ public class SimultaneousEtbTest {
                     ((WrappedAbility) wrappers.get(0)).getWrappedAbility().copy(), null);
             f.game().getStack().add(tail);
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerRequest(f.player(), wrappers);
+            var request = new TriggerContext(f.player(), wrappers);
             assertThrows(IllegalStateException.class, () -> request.encodeAnswer(null));
             assertThrows(IllegalArgumentException.class, () -> request.requireBoundOrder(List.of(wrappers.get(1), wrappers.get(0))));
             new TriggerExecutor(request, answer).apply();
@@ -266,7 +266,7 @@ public class SimultaneousEtbTest {
             inner.getMapParams().put(api == ApiType.Draw ? "NumCards" : "LifeAmount", "2");
             inner.getMapParams().put("Defined", "You");
             var view = new StateReader(f.player(), 0L);
-            var request = new TriggerRequest(f.player(), List.of(wrapper));
+            var request = new TriggerContext(f.player(), List.of(wrapper));
             new TriggerExecutor(request, List.of(0)).apply();
             assertEquals(request.encodeAnswer(null), List.of(0));
             var controller = new PlayerControllerRl(f.game(), f.player(), new LobbyPlayerAi("first", null), data -> {

@@ -13,8 +13,8 @@ import forge.game.phase.PhaseType;
 import forge.game.player.*;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
-import forge.rl.requests.CleanupRequests;
-import forge.rl.requests.SelectionExecutor;
+import forge.rl.decision.context.CleanupContexts;
+import forge.rl.decision.context.SelectionExecutor;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -203,7 +203,7 @@ public class NaturalTurnsTest {
         Player player = game.getPlayers().get(0);
         var view = new StateReader(player, 0L);
         try {
-            var request = CleanupRequests.create(player, 2);
+            var request = CleanupContexts.create(player, 2);
             var hand = player.getCardsIn(ZoneType.Hand);
             assertEquals(request.encodeAnswer(List.of(hand.get(1), hand.get(0))), List.of(1, 0));
             var result = new SelectionExecutor<>(request, List.of(1, 0)).apply();

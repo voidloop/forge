@@ -15,9 +15,9 @@ import forge.game.player.PlayerController;
 import forge.game.player.RegisteredPlayer;
 import forge.game.phase.PhaseType;
 import forge.game.zone.ZoneType;
-import forge.rl.requests.DecisionExecutor;
-import forge.rl.requests.StartingPlayerRequest;
-import forge.rl.requests.StartingPlayerExecutor;
+import forge.rl.decision.context.DecisionExecutor;
+import forge.rl.decision.context.StartingPlayerContext;
+import forge.rl.decision.context.StartingPlayerExecutor;
 import forge.util.MyRandom;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -306,8 +306,8 @@ public class StartingPlayerTest {
         var teacherView = new StateReader(teacher.getRegisteredPlayers().get(0), 0L);
         var replayView = new StateReader(replay.getRegisteredPlayers().get(0), 0L);
         try {
-            var recorded = new StartingPlayerRequest(teacher.getRegisteredPlayers().get(0), true);
-            var current = new StartingPlayerRequest(replay.getRegisteredPlayers().get(0), true);
+            var recorded = new StartingPlayerContext(teacher.getRegisteredPlayers().get(0), true);
+            var current = new StartingPlayerContext(replay.getRegisteredPlayers().get(0), true);
             Player original = teacher.getPlayers().get(1);
             Player replacement = replay.getPlayers().get(1);
             List<Integer> answer = recorded.encodeAnswer(original);

@@ -1,7 +1,7 @@
 package forge.rl;
 
 
-import forge.rl.requests.PriorityRequest;
+import forge.rl.decision.context.PriorityContext;
 
 import forge.ai.LobbyPlayerAi;
 import forge.ai.PlayerControllerAi;
@@ -290,7 +290,7 @@ public class PlayerControllerTeacherTest {
         var fixture = priorityFixture(new LobbyPlayerAi("first", null), 0);
         var ability = fixture.forest().getFirstSpellAbility();
         var activator = ability.getActivatingPlayer();
-        PriorityRequest question = new PriorityRequest(fixture.player());
+        PriorityContext question = new PriorityContext(fixture.player());
         assertSame(ability.getActivatingPlayer(), activator, "Candidate generation changed the native activator");
         assertThrows(IllegalArgumentException.class, () -> question.encodeAnswer(List.of()));
         assertThrows(IllegalArgumentException.class, () -> question.encodeAnswer(List.of(choice.get(0))));

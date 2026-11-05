@@ -63,7 +63,7 @@ public class ManaActivationTest {
         int[] calls = {0};
         int[] answers = {0};
         int[] bindings = {0};
-        var recorder = new forge.rl.decisions.GameRecorder(fixture.player(), new IDecisionRecordCallback() {
+        var recorder = new forge.rl.GameRecorder(fixture.player(), new IDecisionRecordCallback() {
             @Override public void observe(StateReader reader) {
                 assertNull(observed[0]);
                 observed[0] = reader;
@@ -86,7 +86,7 @@ public class ManaActivationTest {
         });
         try {
             for (int i = 0; i < 2; i++) {
-                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(), request -> {
+                List<Integer> answer = recorder.record(new forge.rl.decision.ManaDecision(), request -> {
                     calls[0]++;
                     var answerToRecord = List.of(0);
                     assertEquals(calls[0], bindings[0] + 1, "Binding must follow the original call");

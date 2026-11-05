@@ -1,32 +1,32 @@
 package forge.rl;
 
-import forge.rl.requests.PriorityRequest;
-import forge.rl.requests.AttackersRequest;
-import forge.rl.requests.BlockersRequest;
-import forge.rl.requests.CombatDamageRequest;
-import forge.rl.requests.CombatGraveyardRequest;
-import forge.rl.requests.CleanupRequests;
-import forge.rl.requests.SelectionRequest;
-import forge.rl.requests.ConfirmActionRequest;
-import forge.rl.requests.ConfirmActionExecutor;
-import forge.rl.requests.ManaRequest;
-import forge.rl.requests.ManaPaymentRequest;
-import forge.rl.requests.MulliganRequests;
-import forge.rl.requests.StartingPlayerRequest;
-import forge.rl.requests.TriggerRequest;
-import forge.rl.requests.SelectionExecutor;
-import forge.rl.requests.TriggerExecutor;
-import forge.rl.requests.CombatDamageExecutor;
-import forge.rl.requests.PriorityTargetExecutor;
-import forge.rl.requests.AttackersExecutor;
-import forge.rl.requests.BlockersExecutor;
-import forge.rl.requests.CombatGraveyardExecutor;
-import forge.rl.requests.StartingPlayerExecutor;
-import forge.rl.requests.MulliganKeepExecutor;
-import forge.rl.requests.ManaExecutor;
-import forge.rl.requests.PriorityExecutor;
-import forge.rl.requests.ManaColorExecutor;
-import forge.rl.requests.ManaPaymentExecutor;
+import forge.rl.decision.context.PriorityContext;
+import forge.rl.decision.context.AttackersContext;
+import forge.rl.decision.context.BlockersContext;
+import forge.rl.decision.context.CombatDamageContext;
+import forge.rl.decision.context.CombatGraveyardContext;
+import forge.rl.decision.context.CleanupContexts;
+import forge.rl.decision.context.SelectionContext;
+import forge.rl.decision.context.ConfirmActionContext;
+import forge.rl.decision.context.ConfirmActionExecutor;
+import forge.rl.decision.context.ManaContext;
+import forge.rl.decision.context.ManaPaymentContext;
+import forge.rl.decision.context.MulliganContexts;
+import forge.rl.decision.context.StartingPlayerContext;
+import forge.rl.decision.context.TriggerContext;
+import forge.rl.decision.context.SelectionExecutor;
+import forge.rl.decision.context.TriggerExecutor;
+import forge.rl.decision.context.CombatDamageExecutor;
+import forge.rl.decision.context.PriorityTargetExecutor;
+import forge.rl.decision.context.AttackersExecutor;
+import forge.rl.decision.context.BlockersExecutor;
+import forge.rl.decision.context.CombatGraveyardExecutor;
+import forge.rl.decision.context.StartingPlayerExecutor;
+import forge.rl.decision.context.MulliganKeepExecutor;
+import forge.rl.decision.context.ManaExecutor;
+import forge.rl.decision.context.PriorityExecutor;
+import forge.rl.decision.context.ManaColorExecutor;
+import forge.rl.decision.context.ManaPaymentExecutor;
 
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimap;
@@ -78,11 +78,11 @@ public final class PlayerControllerRl extends PlayerController {
     private boolean callbackActive;
     private RuntimeException failure;
     private Prepared active;
-    private PriorityRequest.Choice pendingPriority;
-    private PriorityRequest.Choice activePriority;
-    private ManaRequest.Choice pendingMana;
-    private ManaRequest.Choice activeMana;
-    private ManaPaymentRequest payment;
+    private PriorityContext.Choice pendingPriority;
+    private PriorityContext.Choice activePriority;
+    private ManaContext.Choice pendingMana;
+    private ManaContext.Choice activeMana;
+    private ManaPaymentContext payment;
     private SpellAbility paymentRoot;
     private record Prepared(SpellAbility root, AbilitySub mode, SpellAbility target) { }
 
@@ -128,8 +128,8 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            SelectionRequest<T> request = new SelectionRequest<>(player, kind, options, title, min, max, optional, reveal, related, params);
-            return new SelectionExecutor<>(request, response(request.data)).apply();
+            SelectionContext<T> request = new SelectionContext<>(player, kind, options, title, min, max, optional, reveal, related, params);
+            return new SelectionExecutor<>(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
 
@@ -197,7 +197,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void playSpellAbilityNoStack(SpellAbility effectSA, boolean mayChoseNewTargets) {
         checkActive();
         try {
-            TriggerRequest.requireResolution(player, effectSA, mayChoseNewTargets);
+            TriggerContext.requireResolution(player, effectSA, mayChoseNewTargets);
             AbilityUtils.resolve(effectSA);
         }
         catch (RuntimeException error) { throw stop(error); }
@@ -207,8 +207,8 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new TriggerRequest(player, activePlayerSAs);
-            new TriggerExecutor(request, response(request.data)).apply();
+            var request = new TriggerContext(player, activePlayerSAs);
+            new TriggerExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public boolean playTrigger(Card host, WrappedAbility wrapperAbility, boolean isMandatory) { throw unsupported("playTrigger"); }
@@ -274,8 +274,8 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatDamageRequest(player, source, targets, remaining, damage, defender, overrideOrder);
-            return new CombatDamageExecutor(request, response(request.data)).apply();
+            var request = new CombatDamageContext(player, source, targets, remaining, damage, defender, overrideOrder);
+            return new CombatDamageExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public Map<GameEntity, Integer> divideShield(Card effectSource, Map<GameEntity, Integer> affected, int shieldAmount) { throw unsupported("divideShield"); }
@@ -329,8 +329,8 @@ public final class PlayerControllerRl extends PlayerController {
             if (cannotStartConfirmation()) { throw new IllegalStateException("Previous choice has not been executed"); }
             confirming = true;
             startObservation();
-            var request = new ConfirmActionRequest(player, sa, mode, message, options, cardToShow, params);
-            return new ConfirmActionExecutor(request, response(request.data())).apply();
+            var request = new ConfirmActionContext(player, sa, mode, message, options, cardToShow, params);
+            return new ConfirmActionExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
         finally { confirming = false; }
     }
@@ -348,16 +348,16 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new AttackersRequest(player, attacker, combat);
-            new AttackersExecutor(request, response(request.data)).apply();
+            var request = new AttackersContext(player, attacker, combat);
+            new AttackersExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public void declareBlockers(Player defender, Combat combat) {
         checkActive();
         try {
             startObservation();
-            var request = new BlockersRequest(player, defender, combat);
-            new BlockersExecutor(request, response(request.data)).apply();
+            var request = new BlockersContext(player, defender, combat);
+            new BlockersExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollection orderBlockers(Card attacker, CardCollection blockers) { throw unsupported("orderBlockers"); }
@@ -368,7 +368,7 @@ public final class PlayerControllerRl extends PlayerController {
     @Override public void notifyOfValue(SpellAbility saSource, GameObject realtedTarget, String value) {
         checkActive();
         // Mana announcements ask no question; the resulting pool is read from native state.
-        if (saSource == null || !ManaRequest.supported(saSource)) { return; }
+        if (saSource == null || !ManaContext.supported(saSource)) { return; }
         try (var view = new StateReader(player, 0L)) {
             if (!view.canIdentify(saSource.getHostCard().getView())) { throw unsupported("notifyOfValue"); }
         }
@@ -380,8 +380,8 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             startObservation();
-            var request = new CombatGraveyardRequest(player, cards, destinationZone, source);
-            return new CombatGraveyardExecutor(request, response(request.data)).apply();
+            var request = new CombatGraveyardContext(player, cards, destinationZone, source);
+            return new CombatGraveyardExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa, CardCollection validCards, int min, int max, CardCollectionView visibleToChooser) { throw unsupported("chooseCardsToDiscardFrom"); }
@@ -393,8 +393,8 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = CleanupRequests.create(player, numDiscard);
-            return new CardCollection(new SelectionExecutor<>(request, response(request.data)).apply());
+            var request = CleanupContexts.create(player, numDiscard);
+            return new CardCollection(new SelectionExecutor<>(request, response(request.encodeQuestion())).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView chooseCardsToDelve(int genericAmount, CardCollection grave) { throw unsupported("chooseCardsToDelve"); }
@@ -409,8 +409,8 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = new StartingPlayerRequest(player, isFirstGame);
-            return new StartingPlayerExecutor(request, response(request.data)).apply();
+            var request = new StartingPlayerContext(player, isFirstGame);
+            return new StartingPlayerExecutor(request, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public PlayerZone chooseStartingHand(List<PlayerZone> zones) { throw unsupported("chooseStartingHand"); }
@@ -437,7 +437,7 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            return new MulliganKeepExecutor(response(MulliganRequests.keep(player, first, cardsToReturn).data())).apply();
+            return new MulliganKeepExecutor(response(MulliganContexts.keep(player, first, cardsToReturn).encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView tuckCardsViaMulligan(CardCollectionView hand, int cardsToReturn) {
@@ -447,8 +447,8 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            var request = MulliganRequests.tuck(player, hand, cardsToReturn);
-            return new CardCollection(new SelectionExecutor<>(request, cardsToReturn == 0 ? List.of() : response(request.data)).apply());
+            var request = MulliganContexts.tuck(player, hand, cardsToReturn);
+            return new CardCollection(new SelectionExecutor<>(request, cardsToReturn == 0 ? List.of() : response(request.encodeQuestion())).apply());
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public List<SpellAbility> chooseSpellAbilityToPlay() {
@@ -458,13 +458,13 @@ public final class PlayerControllerRl extends PlayerController {
                 throw new IllegalStateException("Previous choice has not been executed");
             }
             startObservation();
-            if (ManaRequest.hasSource(player)) {
-                ManaRequest request = new ManaRequest(player);
-                pendingMana = new ManaExecutor(request, response(request.data), player).apply();
+            if (ManaContext.hasSource(player)) {
+                ManaContext request = new ManaContext(player);
+                pendingMana = new ManaExecutor(request, response(request.encodeQuestion()), player).apply();
                 return pendingMana == null ? null : List.of(pendingMana.ability);
             }
-            PriorityRequest request = new PriorityRequest(player);
-            pendingPriority = new PriorityExecutor(request, response(request.data)).apply();
+            PriorityContext request = new PriorityContext(player);
+            pendingPriority = new PriorityExecutor(request, response(request.encodeQuestion())).apply();
             return pendingPriority == null ? null : List.of(pendingPriority.ability);
         } catch (RuntimeException error) { throw stop(error); }
     }
@@ -528,7 +528,7 @@ public final class PlayerControllerRl extends PlayerController {
         try {
             if (activeMana == null) { throw unsupported("unbound mana color"); }
             var request = activeMana.colorRequest(player, message, sa, colors);
-            return new ManaColorExecutor(activeMana, response(request.data())).apply();
+            return new ManaColorExecutor(activeMana, response(request.encodeQuestion())).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public byte chooseColorAllowColorless(String message, Card c, ColorSet colors) { throw unsupported("chooseColorAllowColorless"); }
@@ -567,9 +567,9 @@ public final class PlayerControllerRl extends PlayerController {
                 throw unsupported("nested mana payment");
             }
             startObservation();
-            payment = new ManaPaymentRequest(player, toPay, costPartMana, sa, matrix, effect);
+            payment = new ManaPaymentContext(player, toPay, costPartMana, sa, matrix, effect);
             paymentRoot = sa;
-            if (toPay.isZero()) { return new ManaPaymentExecutor(payment, response(payment.data), new ManaCostBeingPaid(toPay)).apply(); }
+            if (toPay.isZero()) { return new ManaPaymentExecutor(payment, response(payment.encodeQuestion()), new ManaCostBeingPaid(toPay)).apply(); }
             return PlaySpellAbility.payManaCost(this, toPay, costPartMana, sa, player, prompt, matrix, effect);
         } catch (RuntimeException error) { throw stop(error); }
         finally { payment = null; paymentRoot = null; }
@@ -578,9 +578,9 @@ public final class PlayerControllerRl extends PlayerController {
         checkActive();
         try {
             if (payment == null || paymentRoot != ability || effect) { throw unsupported("unbound mana payment"); }
-            ManaPaymentRequest request = payment;
+            ManaPaymentContext request = payment;
             payment = null;
-            return new ManaPaymentExecutor(request, response(request.data), toPay).apply();
+            return new ManaPaymentExecutor(request, response(request.encodeQuestion()), toPay).apply();
         } catch (RuntimeException error) { throw stop(error); }
     }
     @Override public CardCollectionView chooseCardsForCost(CardCollectionView optionList, SpellAbility sa, CostPartWithList cpl, int amount, boolean isOptional, String prompt) { throw unsupported("chooseCardsForCost"); }

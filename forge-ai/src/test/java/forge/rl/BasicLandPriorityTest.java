@@ -65,6 +65,52 @@ public class BasicLandPriorityTest {
         return candidates;
     }
 
+    @Test public void priorityContextBindsNativeHomonymsWithoutProtocolIndices() {
+        Fixture f = fixture(new LobbyPlayerAi("first", null));
+        Card duplicate = OriginalCompositeChoice.add(f.game(), f.player(), "Forest");
+        var options = nativeLandOptions(f.player());
+        SpellAbility first = options.stream().filter(sa -> sa.getHostCard() == f.forest()).findFirst().orElseThrow();
+        SpellAbility second = options.stream().filter(sa -> sa.getHostCard() == duplicate).findFirst().orElseThrow();
+        var context = new forge.rl.decision.context.PriorityContext(f.player());
+        assertNull(context.bindChoice(null));
+        assertEquals(context.encodeAnswer(null), List.of(0));
+        var firstChoice = context.bindChoice(List.of(first));
+        var secondChoice = context.bindChoice(List.of(second));
+        assertNotSame(firstChoice, secondChoice);
+        assertSame(firstChoice.ability, first);
+        assertSame(secondChoice.ability, second);
+        assertSame(context.bindAnswer(context.encodeAnswer(List.of(second))), secondChoice);
+        assertThrows(IllegalArgumentException.class, () -> context.bindChoice(List.of(second.copy())));
+        assertThrows(IllegalArgumentException.class, () -> context.bindChoice(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> context.bindChoice(List.of(first, second)));
+    }
+
+    @Test public void priorityContextPreservesFinalTargetAcrossNativeAndProtocolBinding() {
+        Fixture f = fixture(new LobbyPlayerAi("first", null));
+        for (Card card : List.of(f.forest(), f.island())) {
+            f.player().getZone(ZoneType.Hand).remove(card);
+            f.player().getZone(ZoneType.Graveyard).add(card);
+        }
+        Card mountain = OriginalCompositeChoice.add(f.game(), f.player(), "Mountain");
+        f.player().getZone(ZoneType.Hand).remove(mountain);
+        f.player().getZone(ZoneType.Battlefield).add(mountain);
+        SpellAbility spell = OriginalCompositeChoice.add(f.game(), f.player(), "Shock").getFirstSpellAbility();
+        spell.setActivatingPlayer(f.player());
+        var context = new forge.rl.decision.context.PriorityContext(f.player());
+        spell.getTargets().add(f.opponent());
+        var choice = context.bindChoice(List.of(spell));
+        List<Integer> encoded = context.encodeAnswer(List.of(spell));
+        assertSame(context.bindAnswer(encoded), choice);
+        spell.resetTargets();
+        assertTrue(new forge.rl.decision.context.PriorityTargetExecutor(choice, f.player(), spell).apply());
+        assertSame(spell.getTargets().get(0), f.opponent());
+        spell.resetTargets();
+        assertThrows(IllegalArgumentException.class, () -> context.bindChoice(List.of(spell)));
+        spell.getTargets().add(f.opponent());
+        assertSame(context.bindChoice(List.of(spell)), choice);
+        assertEquals(context.encodeAnswer(List.of(spell)), encoded);
+    }
+
     @Test public void nativeApiSuppliesCandidatesTimingAndExecution() {
         Fixture fixture = fixture(request -> { throw new AssertionError("Native proof must not ask client"); });
         var phase = fixture.game().getPhaseHandler();

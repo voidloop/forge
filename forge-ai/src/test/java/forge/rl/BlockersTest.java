@@ -9,7 +9,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.requests.BlockersRequest;
+import forge.rl.decision.context.BlockersContext;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventBlockersDeclared;
@@ -229,7 +229,7 @@ public class BlockersTest {
             direct(f);
             StateReader view = new StateReader(f.defender(), 0L);
             try {
-                var request = new BlockersRequest(f.defender(), f.defender(), f.game().getCombat());
+                var request = new BlockersContext(f.defender(), f.defender(), f.game().getCombat());
                 Card offered = attacker ? f.attackers().get(0) : f.blockers().get(0);
                 Card lki = CardCopyService.getLKICopy(offered);
                 assertNotSame(lki, offered); assertEquals(lki, offered);

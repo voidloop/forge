@@ -16,8 +16,8 @@ import forge.game.player.DelayedReveal;
 import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.util.collect.FCollection;
-import forge.rl.requests.SelectionRequest;
-import forge.rl.requests.SelectionExecutor;
+import forge.rl.decision.context.SelectionContext;
+import forge.rl.decision.context.SelectionExecutor;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 import org.testng.annotations.BeforeClass;
@@ -173,12 +173,12 @@ public class NativeDecisionOptionsTest {
         var options = new CardCollection(List.of(fixture.first(), other));
         var view = new StateReader(fixture.actor(), 0L);
         try {
-            var request = new SelectionRequest<>(fixture.actor(), "cards", options, "two bears", 2, 2,
+            var request = new SelectionContext<>(fixture.actor(), "cards", options, "two bears", 2, 2,
                     false, null, null, null);
-            var items = (List<?>) ((Map<?, ?>) request.data.get("question")).get("items");
+            var items = (List<?>) ((Map<?, ?>) request.encodeQuestion().get("question")).get("items");
             assertEquals(((Map<?, ?>) items.get(0)).get("name"), ((Map<?, ?>) items.get(1)).get("name"));
             assertNotEquals(((Map<?, ?>) items.get(0)).get("key"), ((Map<?, ?>) items.get(1)).get("key"));
-            String saved = request.data.toString();
+            String saved = request.encodeQuestion().toString();
             options.clear();
             fixture.first().setTapped(true);
             List<Integer> answer = request.encodeAnswer(List.of(other, fixture.first()));
@@ -186,7 +186,7 @@ public class NativeDecisionOptionsTest {
             var applied = new SelectionExecutor<>(request, answer).apply();
             assertSame(applied.get(0), other);
             assertSame(applied.get(1), fixture.first());
-            assertEquals(request.data.toString(), saved, "Native mutations changed a detached question");
+            assertEquals(request.encodeQuestion().toString(), saved, "Native mutations changed a detached question");
             Fixture foreign = fixture(new forge.ai.LobbyPlayerAi("first", null));
             assertThrows(IllegalArgumentException.class,
                     () -> request.encodeAnswer(List.of(foreign.first(), other)));

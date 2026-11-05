@@ -9,7 +9,7 @@ import forge.deck.Deck;
 import forge.game.*;
 import forge.game.card.Card;
 import forge.game.card.CardCopyService;
-import forge.rl.requests.AttackersRequest;
+import forge.rl.decision.context.AttackersContext;
 import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.event.GameEventAttackersDeclared;
@@ -174,7 +174,7 @@ public class AttackersTest {
         direct(f);
         StateReader view = new StateReader(f.actor(), 0L);
         try {
-            var request = new AttackersRequest(f.actor(), f.actor(), f.game().getCombat());
+            var request = new AttackersContext(f.actor(), f.actor(), f.game().getCombat());
             Card offered = f.creatures().get(0);
             Card lki = CardCopyService.getLKICopy(offered);
             assertNotSame(lki, offered);
