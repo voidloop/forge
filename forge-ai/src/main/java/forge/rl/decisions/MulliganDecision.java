@@ -10,7 +10,7 @@ import forge.rl.requests.SelectionRequest;
 import java.util.List;
 import java.util.Map;
 
-public final class MulliganDecision implements Decision {
+public final class MulliganDecision implements Decision<DecisionRequest> {
     private final Type type;
     private final Player first;
     private final CardCollectionView hand;

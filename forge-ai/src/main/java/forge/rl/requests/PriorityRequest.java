@@ -127,13 +127,18 @@ public final class PriorityRequest implements DecisionRequest {
     }
 
     public PriorityRequest(Player player) {
+        this(null, player);
+    }
+
+    public PriorityRequest(StateReader reader, Player player) {
         this.player = player;
         requireContext(player);
         List<Map<String, Object>> items = new ArrayList<>();
         items.add(Map.of("type", "pass"));
         List<Card> cards = new ArrayList<>(player.getCardsIn(ZoneType.Hand));
         cards.addAll(player.getCardsIn(ZoneType.Battlefield));
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             for (Card card : cards) {
                 for (SpellAbility sa : card.getSpellAbilities()) {
                     Player previous = sa.getActivatingPlayer();

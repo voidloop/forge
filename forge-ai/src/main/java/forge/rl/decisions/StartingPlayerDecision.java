@@ -8,7 +8,7 @@ import forge.rl.requests.SelectionRequest;
 import java.util.List;
 import java.util.Map;
 
-public final class StartingPlayerDecision implements Decision {
+public final class StartingPlayerDecision implements Decision<DecisionRequest> {
     private final boolean isFirstGame;
     private StartingPlayerDecision(boolean isFirstGame) {
         this.isFirstGame = isFirstGame;

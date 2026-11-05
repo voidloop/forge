@@ -9,6 +9,7 @@ import forge.rl.requests.DecisionRequest;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.function.Function;
 
 /**
  * External lifecycle manager for game decision recording.
@@ -50,12 +51,14 @@ public final class GameRecorder {
         }
     }
 
-    public <A> A record(DecisionRequest request, Supplier<A> original) {
-        return record(request, null, original);
+    public <A> A record(Decision<?> decision, Supplier<A> original) {
+        return record(decision, null, original);
     }
 
-    public <A> A record(Decision decision, Supplier<A> original) {
-        return record(decision, null, original);
+    public <R extends DecisionRequest, A> A record(Decision<R> decision, Function<R, A> original) {
+        ensureSession();
+        R request = decision.prepare(player, session);
+        return recordPrepared(request, null, () -> original.apply(request));
     }
 
     private void ensureSession() {
@@ -66,12 +69,7 @@ public final class GameRecorder {
         }
     }
 
-    public <A> A record(DecisionRequest request, SpellAbility ability, Supplier<A> original) {
-        ensureSession();
-        return recordPrepared(request, ability, original);
-    }
-
-    public <A> A record(Decision decision, SpellAbility ability, Supplier<A> original) {
+    public <A> A record(Decision<?> decision, SpellAbility ability, Supplier<A> original) {
         ensureSession();
         return recordPrepared(decision.prepare(player, session), ability, original);
     }
@@ -120,8 +118,8 @@ public final class GameRecorder {
         private String activeKind;
     }
 
-    public void recordExecuted(Map<String, Object> data) {
+    public void recordExecuted(Function<StateReader, Map<String, Object>> result) {
         ensureSession();
-        callback.executed(data);
+        callback.executed(result.apply(session));
     }
 }

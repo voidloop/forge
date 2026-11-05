@@ -50,13 +50,18 @@ public final class BlockersRequest implements DecisionRequest {
     }
 
     public BlockersRequest(Player player, Player defender, Combat combat) {
+        this(null, player, defender, combat);
+    }
+
+    public BlockersRequest(StateReader reader, Player player, Player defender, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
         if (hasUnboundDeclaration(defender)) {
             throw new IllegalArgumentException("Unbound or nonempty blocker declaration");
         }
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             attackers = List.copyOf(combat.getAttackers());
             requireAttackers();
             var items = new ArrayList<Map<String, Object>>();

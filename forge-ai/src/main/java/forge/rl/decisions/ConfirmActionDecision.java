@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /** The teacher's plan for one native boolean confirmation. */
-public final class ConfirmActionDecision implements Decision {
+public final class ConfirmActionDecision implements Decision<DecisionRequest> {
     private final SpellAbility ability;
     private final PlayerActionConfirmMode mode;
     private final String message;

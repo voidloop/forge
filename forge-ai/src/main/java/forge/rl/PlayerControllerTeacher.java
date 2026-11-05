@@ -1,19 +1,23 @@
 package forge.rl;
 
 import forge.rl.requests.PriorityRequest;
-import forge.rl.requests.AttackersRequest;
-import forge.rl.requests.BlockersRequest;
-import forge.rl.requests.CombatDamageRequest;
-import forge.rl.requests.CombatGraveyardRequest;
-import forge.rl.requests.CleanupRequests;
+import forge.rl.decisions.PriorityDecision;
+import forge.rl.decisions.AttackersDecision;
+import forge.rl.decisions.BlockersDecision;
+import forge.rl.decisions.CombatDamageDecision;
+import forge.rl.decisions.CombatGraveyardDecision;
+import forge.rl.decisions.CleanupDecision;
+import forge.rl.decisions.ColorDecision;
 import forge.rl.decisions.ConfirmActionDecision;
 import forge.rl.requests.ManaRequest;
-import forge.rl.requests.ManaPaymentRequest;
+import forge.rl.decisions.ManaDecision;
+import forge.rl.decisions.ManaPaymentDecision;
 import forge.rl.decisions.MulliganDecision;
 import forge.rl.decisions.SelectionDecision;
 import forge.rl.requests.MulliganRequests;
 import forge.rl.decisions.StartingPlayerDecision;
 import forge.rl.requests.TriggerRequest;
+import forge.rl.decisions.TriggerDecision;
 import forge.rl.decisions.GameRecorder;
 
 import forge.ai.LobbyPlayerAi;
@@ -90,28 +94,28 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public CardCollectionView chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return recorder.record(CleanupRequests.create(player, numDiscard),
+        return recorder.record(new CleanupDecision(numDiscard),
                 () -> super.chooseCardsToDiscardToMaximumHandSize(numDiscard));
     }
 
     @Override public void declareAttackers(Player attacker, Combat combat) {
-        recorder.record(new AttackersRequest(player, attacker, combat),
+        recorder.record(new AttackersDecision(attacker, combat),
                 () -> { super.declareAttackers(attacker, combat); return null; });
     }
 
     @Override public void declareBlockers(Player defender, Combat combat) {
-        recorder.record(new BlockersRequest(player, defender, combat),
+        recorder.record(new BlockersDecision(defender, combat),
                 () -> { super.declareBlockers(defender, combat); return null; });
     }
 
     @Override public Map<Card, Integer> assignCombatDamage(Card source, CardCollectionView targets, CardCollectionView remaining,
             int damage, GameEntity defender, boolean overrideOrder) {
-        return recorder.record(new CombatDamageRequest(player, source, targets, remaining, damage, defender, overrideOrder),
+        return recorder.record(new CombatDamageDecision(source, targets, remaining, damage, defender, overrideOrder),
                 () -> super.assignCombatDamage(source, targets, remaining, damage, defender, overrideOrder));
     }
 
     @Override public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone, SpellAbility source) {
-        return recorder.record(new CombatGraveyardRequest(player, cards, destinationZone, source),
+        return recorder.record(new CombatGraveyardDecision(cards, destinationZone, source),
                 () -> super.orderMoveToZoneList(cards, destinationZone, source));
     }
 
@@ -119,15 +123,13 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         recorder.requireHealthy();
         try {
             if (ManaRequest.hasSource(player)) {
-                ManaRequest request = new ManaRequest(player);
-                return recorder.record(request, () -> {
+                return recorder.record(new ManaDecision(), request -> {
                     List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
                     pendingMana = chosen == null ? null : request.selected();
                     return chosen;
                 });
             }
-            PriorityRequest request = new PriorityRequest(player);
-            return recorder.record(request, () -> {
+            return recorder.record(new PriorityDecision(), request -> {
                 List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
                 pendingPriority = request.bindChoice(request.encodeAnswer(chosen));
                 return chosen;
@@ -136,8 +138,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
     }
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
-        TriggerRequest request = new TriggerRequest(player, abilities);
-        recorder.record(request, () -> {
+        recorder.record(new TriggerDecision(abilities), request -> {
             activeTrigger = request;
             super.orderAndPlaySimultaneousSa(abilities);
             return null;
@@ -180,9 +181,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
             recorder.requireHealthy();
             activePriority.after(player, reported);
             if (activePriority.isCast()) {
-                try (var view = new StateReader(player, 0L)) {
-                    recorder.recordExecuted(activePriority.result(player, view, reported));
-                }
+                recorder.recordExecuted(view -> activePriority.result(player, view, reported));
             }
             return reported;
         } catch (RuntimeException error) { recorder.fail(error); throw error; }
@@ -191,15 +190,14 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public byte chooseColor(String message, SpellAbility ability, ColorSet colors) {
         if (activeMana == null) { throw new UnsupportedOperationException("Unbound teacher mana color"); }
-        return recorder.record(activeMana.colorRequest(player, message, ability, colors),
+        return recorder.record(new ColorDecision(activeMana, message, ability, colors),
                 () -> super.chooseColor(message, ability, colors));
     }
 
     @Override public boolean payManaCost(ManaCost cost, CostPartMana part, SpellAbility ability,
             String prompt, ManaConversionMatrix matrix, boolean effect) {
         recorder.requireHealthy();
-        // Simplified zero payment logic for now
-        return recorder.record(new ManaPaymentRequest(player, cost, part, ability, matrix, effect),
+        return recorder.record(new ManaPaymentDecision(cost, part, ability, matrix, effect),
                 () -> super.payManaCost(cost, part, ability, prompt, matrix, effect));
     }
 

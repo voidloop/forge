@@ -56,6 +56,49 @@ public class ManaActivationTest {
         return new Fixture(game, player, land);
     }
 
+    @Test public void recorderPreparesManaRequestWithItsObservedReader() {
+        Fixture fixture = fixture(new LobbyPlayerAi("first", null));
+        StateReader[] observed = {null};
+        Object[] landKey = {null};
+        int[] calls = {0};
+        int[] answers = {0};
+        var recorder = new forge.rl.decisions.GameRecorder(fixture.player(), new IDecisionRecordCallback() {
+            @Override public void observe(StateReader reader) {
+                assertNull(observed[0]);
+                observed[0] = reader;
+                // Assign this reference before the snapshot to distinguish the session from a fresh reader.
+                reader.reference(fixture.player().getCardsIn(ZoneType.Battlefield).stream()
+                        .filter(card -> card != fixture.land()).findFirst().orElseThrow());
+                landKey[0] = reader.reference(fixture.land());
+            }
+            @Override public void before(Map<String, Object> request) {
+                assertEquals(request.get("state"), observed[0].snapshot());
+                var question = (Map<?, ?>) request.get("question");
+                var items = (List<?>) question.get("items");
+                assertEquals(((Map<?, ?>) items.get(1)).get("key"), landKey[0]);
+            }
+            @Override public void after(List<Integer> answer) {
+                assertEquals(answer, List.of(0));
+                answers[0]++;
+            }
+        });
+        try {
+            for (int i = 0; i < 2; i++) {
+                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(), request -> {
+                    calls[0]++;
+                    assertSame(request.selected().ability.getHostCard(), fixture.land());
+                    return List.of(0);
+                });
+                assertEquals(answer, List.of(0));
+            }
+            assertEquals(calls[0], 2);
+            assertEquals(answers[0], 2);
+            assertEquals(observed[0].reference(fixture.land()), landKey[0]);
+        } finally {
+            recorder.close();
+        }
+    }
+
     @Test public void nativeManaActivationAsksForColorAfterTapWithoutNewPriority() {
         int[] colorCalls = {0};
         byte[] chosenColor = {0};

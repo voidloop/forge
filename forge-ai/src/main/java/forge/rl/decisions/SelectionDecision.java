@@ -9,7 +9,7 @@ import forge.rl.requests.SelectionRequest;
 
 import java.util.Map;
 
-public final class SelectionDecision<T extends GameEntity> implements Decision {
+public final class SelectionDecision<T extends GameEntity> implements Decision<DecisionRequest> {
     private final String kind;
     private final Iterable<T> options;
     private final String title;

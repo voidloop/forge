@@ -34,8 +34,11 @@ public final class ManaPaymentRequest implements DecisionRequest {
     private final List<Boolean> available = new ArrayList<>();
     private final List<Integer> initial = new ArrayList<>();
 
-    public ManaPaymentRequest(Player player, ManaCost cost, CostPartMana part,
-                              SpellAbility root, ManaConversionMatrix matrix, boolean effect) {
+    public ManaPaymentRequest(Player player, ManaCost cost, CostPartMana part, SpellAbility root, ManaConversionMatrix matrix, boolean effect) {
+        this(null, player, cost, part, root, matrix, effect);
+    }
+
+    public ManaPaymentRequest(StateReader reader, Player player, ManaCost cost, CostPartMana part, SpellAbility root, ManaConversionMatrix matrix, boolean effect) {
         this.player = player;
         this.root = root;
         this.cost = cost;
@@ -81,7 +84,8 @@ public final class ManaPaymentRequest implements DecisionRequest {
         }
         // Pool iteration can change during native AI evaluation; options identify units by bound source.
         initial.sort(Integer::compareTo);
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             List<Map<String, Object>> items = new ArrayList<>();
             for (int i = 0; i < sources.size(); i++) {
                 SpellAbility ability = sources.get(i);

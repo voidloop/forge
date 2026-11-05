@@ -25,8 +25,11 @@ public final class CombatDamageRequest implements DecisionRequest {
     private final CardCollectionView offered;
     private final int damage;
 
-    public CombatDamageRequest(Player player, Card source, CardCollectionView targets,
-                               CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
+    public CombatDamageRequest(Player player, Card source, CardCollectionView targets, CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
+        this(null, player, source, targets, remaining, damage, defender, overrideOrder);
+    }
+
+    public CombatDamageRequest(StateReader reader, Player player, Card source, CardCollectionView targets, CardCollectionView remaining, int damage, GameEntity defender, boolean overrideOrder) {
         this.player = player;
         this.combat = Objects.requireNonNull(player.getGame().getCombat(), "No combat for damage assignment");
         this.source = Objects.requireNonNull(source);
@@ -38,7 +41,8 @@ public final class CombatDamageRequest implements DecisionRequest {
         if (hasInvalidAssignmentArguments(remaining, overrideOrder)) {
             throw new IllegalArgumentException("Invalid native damage assignment arguments");
         }
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             data = Map.of("state", view.snapshot(), "question", StateReader.data(
                     "kind", "combat_damage", "scope", "ordinary_vanilla_duel", "source", view.reference(source),
                     "defender", defender == null ? null : view.reference(defender), "damage", damage,

@@ -1,5 +1,6 @@
 package forge.rl.requests;
 
+import forge.rl.StateReader;
 import forge.game.card.Card;
 import forge.game.combat.Combat;
 import forge.game.card.CardCollectionView;
@@ -18,8 +19,11 @@ public final class CombatGraveyardRequest implements DecisionRequest {
     private final List<Card> cards;
     final SelectionRequest<Card> selection;
 
-    public CombatGraveyardRequest(Player player, CardCollectionView cards,
-                                  ZoneType destination, SpellAbility source) {
+    public CombatGraveyardRequest(Player player, CardCollectionView cards, ZoneType destination, SpellAbility source) {
+        this(null, player, cards, destination, source);
+    }
+
+    public CombatGraveyardRequest(StateReader reader, Player player, CardCollectionView cards, ZoneType destination, SpellAbility source) {
         this.player = player;
         this.combat = player.getGame().getCombat();
         this.cards = List.copyOf(cards);
@@ -27,7 +31,9 @@ public final class CombatGraveyardRequest implements DecisionRequest {
             throw new UnsupportedOperationException("Only simultaneous combat graveyard ordering");
         }
         requireContext();
-        selection = new SelectionRequest<>(player, "combat_graveyard_order", cards,
+        selection = reader == null ? new SelectionRequest<>(player, "combat_graveyard_order", cards,
+                "Order simultaneous combat deaths into graveyard", cards.size(), cards.size(), false, null, null, null)
+                : SelectionRequest.create(reader, player, "combat_graveyard_order", cards,
                 "Order simultaneous combat deaths into graveyard", cards.size(), cards.size(), false, null, null, null);
         data = selection.data();
     }

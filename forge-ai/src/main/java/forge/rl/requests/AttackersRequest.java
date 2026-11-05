@@ -41,13 +41,18 @@ public final class AttackersRequest implements DecisionRequest {
     }
 
     public AttackersRequest(Player player, Player attacker, Combat combat) {
+        this(null, player, attacker, combat);
+    }
+
+    public AttackersRequest(StateReader reader, Player player, Player attacker, Combat combat) {
         this.player = player;
         this.combat = Objects.requireNonNull(combat);
         requireContext();
         if (hasUnboundDeclaration(attacker)) {
             throw new IllegalArgumentException("Unbound or nonempty attacker declaration");
         }
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             attackers = List.copyOf(CombatUtil.getPossibleAttackers(player));
             defenders = List.copyOf(combat.getDefenders());
             var items = new ArrayList<Map<String, Object>>();

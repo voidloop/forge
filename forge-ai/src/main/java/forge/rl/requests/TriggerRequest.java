@@ -92,6 +92,10 @@ public final class TriggerRequest implements DecisionRequest {
     }
 
     public TriggerRequest(Player player, List<SpellAbility> abilities) {
+        this(null, player, abilities);
+    }
+
+    public TriggerRequest(StateReader reader, Player player, List<SpellAbility> abilities) {
         this.player = player;
         // shortcut: one or two distinct ETB sources per controller; qualify repeated sources and larger batches separately.
         if (!isSupportedBatch(abilities)) {
@@ -104,7 +108,8 @@ public final class TriggerRequest implements DecisionRequest {
         requireLiveSources();
         stackBefore = stack(player);
         if (stackBefore.stream().anyMatch(this::isSource)) { throw new IllegalArgumentException("Trigger already on stack"); }
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             data = Map.of("state", view.snapshot(), "question", Map.of("kind", "trigger_prepare",
                     "scope", isLegacySingleDraw() ? "single_self_etb_draw" : "mandatory_etb", "mandatory", true,
                     "items", bindings.stream().map(binding -> Map.of("key", view.reference(binding.host()), "trigger", 0)).toList()));

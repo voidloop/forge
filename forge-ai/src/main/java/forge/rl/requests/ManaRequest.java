@@ -70,6 +70,10 @@ public final class ManaRequest implements DecisionRequest {
     }
 
     public ManaRequest(Player player) {
+        this(null, player);
+    }
+
+    public ManaRequest(StateReader reader, Player player) {
         SpellAbility ability = requireContext(player);
         Player activator = ability.getActivatingPlayer();
         boolean playable;
@@ -77,7 +81,8 @@ public final class ManaRequest implements DecisionRequest {
         try { playable = ability.canPlay(); }
         finally { ability.setActivatingPlayer(activator); }
         choice = playable ? new Choice(ability, ability.getHostCard()) : null;
-        try (var view = new StateReader(player, 0L)) {
+        try (var localReader = reader == null ? new StateReader(player, 0L) : null) {
+            var view = reader == null ? localReader : reader;
             List<Map<String, Object>> items = new ArrayList<>();
             items.add(Map.of("type", "pass"));
             if (choice != null) {
@@ -150,15 +155,19 @@ public final class ManaRequest implements DecisionRequest {
         ColorSet colors() { return ColorSet.fromNames(ability.getParam("Produced").substring(6).split(" ")); }
 
         public ColorRequest colorRequest(Player player, String message, SpellAbility source, ColorSet offered) {
+            try (var reader = new StateReader(player, 0L)) {
+                return colorRequest(reader, player, message, source, offered);
+            }
+        }
+
+        public ColorRequest colorRequest(StateReader view, Player player, String message, SpellAbility source, ColorSet offered) {
             if (hasUnboundColorRequest(player, source)) {
                 throw new IllegalStateException("Unbound or repeated mana color question");
             }
             samePriority(player);
             if (offered.getColor() != colors().getColor()) { throw new UnsupportedOperationException("AI-restricted mana menu must not be exported"); }
-            try (var view = new StateReader(player, 0L)) {
-                return new ColorRequest(this, Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_color", "source", view.reference(card),
+            return new ColorRequest(this, Map.of("state", view.snapshot(), "question", Map.of("kind", "mana_color", "source", view.reference(card),
                         "prompt", message, "items", colors().stream().map(MagicColor.Color::getShortName).toList())));
-            }
         }
 
         private void samePriority(Player player) {
