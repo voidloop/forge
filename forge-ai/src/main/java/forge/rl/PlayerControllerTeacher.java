@@ -89,7 +89,7 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        return recorder.record(new ConfirmActionDecision(sa, mode, message, options, cardToShow, params), sa,
+        return recorder.record(new ConfirmActionDecision(sa, mode, message, options, cardToShow, params),
                 () -> super.confirmAction(sa, mode, message, options, cardToShow, params));
     }
 
@@ -123,23 +123,16 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
         recorder.requireHealthy();
         try {
             if (ManaRequest.hasSource(player)) {
-                return recorder.record(new ManaDecision(), request -> {
-                    List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
-                    pendingMana = chosen == null ? null : request.selected();
-                    return chosen;
-                });
+                return recorder.record(new ManaDecision(choice -> pendingMana = choice),
+                        () -> super.chooseSpellAbilityToPlay());
             }
-            return recorder.record(new PriorityDecision(), request -> {
-                List<SpellAbility> chosen = super.chooseSpellAbilityToPlay();
-                pendingPriority = request.bindChoice(request.encodeAnswer(chosen));
-                return chosen;
-            });
+            return recorder.record(new PriorityDecision(choice -> pendingPriority = choice),
+                    () -> super.chooseSpellAbilityToPlay());
         } catch (RuntimeException error) { recorder.fail(error); throw error; }
     }
 
     @Override public void orderAndPlaySimultaneousSa(List<SpellAbility> abilities) {
-        recorder.record(new TriggerDecision(abilities), request -> {
-            activeTrigger = request;
+        recorder.record(new TriggerDecision(abilities, request -> activeTrigger = request), () -> {
             super.orderAndPlaySimultaneousSa(abilities);
             return null;
         });
@@ -203,19 +196,19 @@ public final class PlayerControllerTeacher extends PlayerControllerAi {
 
     @Override public <T extends GameEntity> T chooseSingleEntityForEffect(FCollectionView<T> options, DelayedReveal reveal,
             SpellAbility sa, String title, boolean optional, Player related, Map<String, Object> params) {
-        return recorder.record(SelectionDecision.singleEntity(options, title, optional, reveal, related, params), sa,
+        return recorder.record(SelectionDecision.singleEntity(options, sa, title, optional, reveal, related, params),
                 () -> super.chooseSingleEntityForEffect(options, reveal, sa, title, optional, related, params));
     }
 
     @Override public CardCollectionView chooseCardsForEffect(CardCollectionView options, SpellAbility sa,
             String title, int min, int max, boolean optional, Map<String, Object> params) {
-        return recorder.record(SelectionDecision.cards(options, title, min, max, optional, params), sa,
+        return recorder.record(SelectionDecision.cards(options, sa, title, min, max, optional, params),
                 () -> super.chooseCardsForEffect(options, sa, title, min, max, optional, params));
     }
 
     @Override public <T extends GameEntity> List<T> chooseEntitiesForEffect(FCollectionView<T> options, int min, int max,
             DelayedReveal reveal, SpellAbility sa, String title, Player related, Map<String, Object> params) {
-        return recorder.record(SelectionDecision.entities(options, title, min, max, reveal, related, params), sa,
+        return recorder.record(SelectionDecision.entities(options, sa, title, min, max, reveal, related, params),
                 () -> super.chooseEntitiesForEffect(options, min, max, reveal, sa, title, related, params));
     }
 }

@@ -62,6 +62,7 @@ public class ManaActivationTest {
         Object[] landKey = {null};
         int[] calls = {0};
         int[] answers = {0};
+        int[] bindings = {0};
         var recorder = new forge.rl.decisions.GameRecorder(fixture.player(), new IDecisionRecordCallback() {
             @Override public void observe(StateReader reader) {
                 assertNull(observed[0]);
@@ -79,19 +80,24 @@ public class ManaActivationTest {
             }
             @Override public void after(List<Integer> answer) {
                 assertEquals(answer, List.of(0));
+                assertEquals(bindings[0], calls[0], "Binding must precede the answer callback");
                 answers[0]++;
             }
         });
         try {
             for (int i = 0; i < 2; i++) {
-                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(), request -> {
+                List<Integer> answer = recorder.record(new forge.rl.decisions.ManaDecision(choice -> {
+                    assertEquals(calls[0], bindings[0] + 1, "Binding must follow the original call");
+                    assertSame(choice.ability.getHostCard(), fixture.land());
+                    bindings[0]++;
+                }), () -> {
                     calls[0]++;
-                    assertSame(request.selected().ability.getHostCard(), fixture.land());
                     return List.of(0);
                 });
                 assertEquals(answer, List.of(0));
             }
             assertEquals(calls[0], 2);
+            assertEquals(bindings[0], 2);
             assertEquals(answers[0], 2);
             assertEquals(observed[0].reference(fixture.land()), landKey[0]);
         } finally {

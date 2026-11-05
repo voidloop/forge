@@ -30,6 +30,8 @@ public final class ConfirmActionDecision implements Decision<DecisionRequest> {
         this.parameters = parameters;
     }
 
+    @Override public SpellAbility ability() { return ability; }
+
     @Override public DecisionRequest prepare(Player player, StateReader reader) {
         return new ConfirmActionRequest(reader, player, ability, mode, message, options, cardToShow, parameters);
     }

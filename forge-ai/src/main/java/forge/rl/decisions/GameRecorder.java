@@ -52,14 +52,6 @@ public final class GameRecorder {
         }
     }
 
-    public <A> A record(Decision<?> decision, Supplier<A> original) {
-        return record(decision, null, original);
-    }
-
-    public <R extends DecisionRequest, A> A record(Decision<R> decision, Function<R, A> original) {
-        return record(decision, null, original);
-    }
-
     private void ensureSession() {
         requireHealthy();
         if (!sessionStarted) {
@@ -68,19 +60,15 @@ public final class GameRecorder {
         }
     }
 
-    public <A> A record(Decision<?> decision, SpellAbility ability, Supplier<A> original) {
-        return record(decision, ability, request -> original.get());
-    }
-
-    private <R extends DecisionRequest, A> A record(Decision<R> decision, SpellAbility ability,
-            Function<R, A> original) {
+    public <R extends DecisionRequest, A> A record(Decision<R> decision, Supplier<A> original) {
         ensureSession();
         R request = decision.prepare(player, session);
         String name = decisionKind(request);
+        SpellAbility ability = decision.ability();
 
         if (ability != null && activeKind != null) {
             if (isNestedSingleSelection(ability, name)) {
-                return original.apply(request);
+                return original.get();
             }
             throw new UnsupportedOperationException("Unexpected nested teacher selection");
         }
@@ -95,7 +83,9 @@ public final class GameRecorder {
             activeKind = name;
 
             callback.before(request.data());
-            A answer = original.apply(request);
+            decision.beforeOriginal(request);
+            A answer = original.get();
+            decision.afterOriginal(request, answer);
             callback.after(request.encodeAnswer(answer));
 
             return answer;
