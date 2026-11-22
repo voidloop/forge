@@ -4,10 +4,10 @@ import forge.ai.LobbyPlayerAi;
 import forge.game.Game;
 import forge.game.player.Player;
 
-public final class LobbyPlayerPilot extends LobbyPlayerAi {
-    private final IPilotChoices choices;
+public final class LobbyPlayerRl extends LobbyPlayerAi {
+    private final IPriorityChoices choices;
 
-    public LobbyPlayerPilot(String name, IPilotChoices choices) {
+    public LobbyPlayerRl(String name, IPriorityChoices choices) {
         super(name, null);
         this.choices = choices;
     }
@@ -15,7 +15,7 @@ public final class LobbyPlayerPilot extends LobbyPlayerAi {
     @Override
     public Player createIngamePlayer(Game game, int id) {
         Player player = new Player(getName(), game, id);
-        player.setFirstController(new PlayerControllerPilot(game, player, this, choices));
+        player.setFirstController(new PlayerControllerRl(game, player, this, choices));
         return player;
     }
 }
