@@ -77,6 +77,24 @@ public final class GameStateReader {
                         "pending_delayed_effects", false, "effect_durations", false));
     }
 
+    /** Read once the native game loop returns, using the original registration order for seats. */
+    public static Map<String, Object> terminalOutcome(final Game game) {
+        var outcome = game.getOutcome();
+        if (!game.isGameOver() || outcome == null) {
+            throw new IllegalStateException("Native game returned without a terminal outcome");
+        }
+        var players = game.getRegisteredPlayers();
+        List<Integer> winners = new ArrayList<>();
+        for (int seat = 0; seat < players.size(); seat++) {
+            if (outcome.isWinner(players.get(seat).getRegisteredPlayer())) {
+                winners.add(seat);
+            }
+        }
+        return data("draw", outcome.isDraw(), "winner_seats", winners,
+                "reason", outcome.getWinCondition().toString(), "turns", outcome.getLastTurnNumber(),
+                "details", outcome.getOutcomeStrings());
+    }
+
     private void resetSnapshotReferences() {
         // Controllers are constructed before Forge finishes registering players.
         playerIds.clear();

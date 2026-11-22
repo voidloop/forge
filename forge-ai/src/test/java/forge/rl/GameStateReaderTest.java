@@ -10,6 +10,7 @@ import forge.card.CardType;
 import forge.card.mana.ManaCost;
 import forge.deck.Deck;
 import forge.game.Game;
+import forge.game.GameEndReason;
 import forge.game.GameRules;
 import forge.game.GameStage;
 import forge.game.GameType;
@@ -178,6 +179,17 @@ public class GameStateReaderTest {
         var after = reader.snapshot();
         assertEquals(namedCard(after, "Grizzly Bears").get("tapped"), true);
         assertEquals(rows(after, "players").get(0).get("life"), 13);
+    }
+
+    @Test
+    public void terminalResultUsesRegisteredSeatsAndRequiresGameOver() {
+        var fixture = fixture();
+        assertThrows(IllegalStateException.class, () -> GameStateReader.terminalOutcome(fixture.game()));
+        fixture.observer().concede();
+        fixture.game().setGameOver(GameEndReason.AllOpponentsLost);
+        var result = GameStateReader.terminalOutcome(fixture.game());
+        assertEquals(result.get("winner_seats"), List.of(1));
+        assertEquals(result.get("draw"), false);
     }
 
     @Test
