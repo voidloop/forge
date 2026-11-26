@@ -46,7 +46,7 @@ public final class PlayerControllerRl extends PlayerControllerAi {
             int index = choices.pick(observation, actions);
             if (index == 0) return null;
             var chosen = abilities.get(index - 1);
-            if (!chosen.usesTargeting()) return List.of(chosen);
+            if (chosen.getAllTargetChoices().isEmpty()) return List.of(chosen);
             // Rabid Bite's AI chooses the parent and sub-ability targets together.
             // Start with fresh targets and invoke the native chooser once on the root.
             clearTargets(chosen);
@@ -61,7 +61,7 @@ public final class PlayerControllerRl extends PlayerControllerAi {
 
     private static void clearTargets(SpellAbility chosen) {
         for (var node = chosen; node != null; node = node.getSubAbility()) {
-            if (node.usesTargeting()) node.clearTargets();
+            node.clearTargets();
         }
     }
 }

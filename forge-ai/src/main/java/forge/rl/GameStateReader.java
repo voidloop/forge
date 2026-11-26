@@ -251,7 +251,7 @@ public final class GameStateReader {
             oracleText = knownFace == null ? current.getOracleText() : knownFace.get("oracle_text");
         }
         result.put("oracle_text", oracleText);
-        result.put("attached_to", entityReference(attachedEntity(card)));
+        result.put("attached_to", entityReference(card.getEntityAttachedTo()));
         return result;
     }
 
@@ -263,10 +263,6 @@ public final class GameStateReader {
         return data("name", face.getName(),
                 "mana_cost", face.getManaCost().isNoCost() ? null : face.getManaCost().toString(),
                 "rules_text", face.getAbilityText(), "oracle_text", face.getOracleText());
-    }
-
-    private GameEntity attachedEntity(final Card card) {
-        return card.getAttachedTo() != null ? card.getAttachedTo() : card.getPlayerAttachedTo();
     }
 
     private List<Map<String, Object>> readStack() {
@@ -295,15 +291,15 @@ public final class GameStateReader {
     }
 
     private void addTargets(final TargetChoices choices, final List<Map<String, Object>> result) {
-        for (Card target : choices.getTargetCards()) {
-            result.add(data("kind", "card", "reference", cardIds.get(target)));
-        }
-        for (Player target : choices.getTargetPlayers()) {
-            result.add(data("kind", "player", "reference", playerIds.get(target)));
-        }
-        for (SpellAbility target : choices.getTargetSpells()) {
-            SpellAbilityStackInstance item = game.getStack().getInstanceMatchingSpellAbilityID(target);
-            result.add(data("kind", "stack", "reference", item == null ? null : stackIds.get(item)));
+        for (var target : choices) {
+            if (target instanceof Card card) {
+                result.add(data("kind", "card", "reference", cardIds.get(card)));
+            } else if (target instanceof Player player) {
+                result.add(data("kind", "player", "reference", playerIds.get(player)));
+            } else if (target instanceof SpellAbility spell) {
+                SpellAbilityStackInstance item = game.getStack().getInstanceMatchingSpellAbilityID(spell);
+                result.add(data("kind", "stack", "reference", stackIds.get(item)));
+            }
         }
     }
 

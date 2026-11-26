@@ -105,6 +105,17 @@ public class PilotChoicesTest {
     }
 
     @Test
+    public void hauntTheNetworkTargetsTheOpponentOnItsSubAbility() {
+        var position = position((state, actions) -> Math.max(0, source(actions, ref(state, "Haunt the Network"))));
+        position.add(position.actor(), ZoneType.Hand, "Haunt the Network");
+        var selected = position.choose();
+        assertNotNull(selected, "Forge AI should be able to choose the opponent");
+        var spell = selected.get(0);
+        assertFalse(spell.usesTargeting());
+        assertSame(spell.getSubAbility().getTargets().getFirstTargetedPlayer(), position.opponent());
+    }
+
+    @Test
     public void shockUsesInheritedTargetingPaymentAndResolution() {
         var position = position((state, actions) -> source(actions, ref(state, "Shock")));
         var me = position.actor();

@@ -271,6 +271,23 @@ public class GameStateReaderTest {
         assertNull(unboundItem.get("description"), "An unbound source must not disclose text through its LKI view");
     }
 
+    @Test
+    public void stackPreservesOrderOfPlayerAndCardTargets() {
+        Fixture fixture = fixture();
+        Card creature = add(fixture, fixture.opponent(), ZoneType.Battlefield, "Grizzly Bears");
+        Card source = add(fixture, fixture.observer(), ZoneType.Hand, "Storm of Steel");
+        SpellAbility spell = AbilityUtils.getBasicSpellsFromPlayEffect(source, fixture.observer()).get(0);
+        spell.getTargets().add(fixture.opponent());
+        spell.getTargets().add(creature);
+        spell.setHostCard(fixture.game().getAction().moveToStack(source, spell));
+        fixture.game().getStack().add(spell);
+
+        var state = new GameStateReader(fixture.game(), fixture.observer()).snapshot();
+        assertEquals(rows(state, "stack").get(0).get("targets"), List.of(
+                Map.of("kind", "player", "reference", "p1"),
+                Map.of("kind", "card", "reference", namedCard(state, "Grizzly Bears").get("id"))));
+    }
+
     private static void assertDetachedData(Object value) {
         if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) {
             return;
